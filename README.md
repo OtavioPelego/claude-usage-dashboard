@@ -157,6 +157,28 @@ opened) and, with several computers, **computer names** — use the "hide projec
 and check the CSV/HTML before sharing them. The API key is read only from an environment variable and never printed or
 saved.
 
+## Fascínio por dados / Why this exists
+
+**PT** — Esta skill existe por causa de um fascínio meu por números. Eu me viciei em monitorar quanto gastava de tokens
+por dia e me incomodava quando não "torrava" o que tinha me proposto. Virou um jogo comigo mesmo: me empurrava a usar o
+Claude Code todo dia, aprender, me superar — e, por consequência, criar coisas que eu não teria criado sem esse empurrão.
+Sem esse fascínio, eu provavelmente teria largado a ferramenta, e esta skill nem existiria.
+
+Sei que o que importa de verdade é o que se constrói — coisas incríveis, úteis, necessárias —, não a quantidade de tokens.
+Gastar token não é mérito por si só: para mim é um termômetro que me mantém em movimento. Cada pessoa tem o seu objetivo, e
+tem quem queira o contrário: economizar, ficar dentro de um limite. Por isso o painel deixa escolher entre **atingir uma
+meta** e **ficar dentro de um limite** — a conta é a mesma, muda só a frase. Use do jeito que te ajudar.
+
+**EN** — This skill exists because of my fascination with numbers. I got hooked on tracking how many tokens I used per day,
+and it bugged me when I didn't "burn" what I had set out to. It became a game with myself: it pushed me to use Claude Code
+every day, to learn and to outdo myself — and, as a result, to build things I wouldn't have built otherwise. Without that
+fascination I would probably have dropped the tool, and this skill wouldn't exist. I know what really matters is what you
+build, not the token count: spending tokens is no merit in itself, just a thermometer that keeps me moving. Everyone has
+their own goal — some want the opposite: to save, to stay within a limit. That is why the dashboard lets you pick between
+**reaching a goal** and **staying within a limit**: same arithmetic, different wording. Use it the way that helps you.
+
+— Otávio
+
 ## Author and license / Autor e licença
 
 Made by **Otávio Pelego** — *Site do Otávio Corrêa*: <https://otaviopelego.pages.dev> · GitHub:

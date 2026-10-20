@@ -456,6 +456,9 @@
 
   footer.note { color: var(--text-muted); font-size: 12px; margin-top: 22px; line-height: 1.6; }
   footer.note .credito { display: block; margin-top: 10px; }
+  footer.note .sobre { margin-top: 12px; }
+  footer.note .sobre summary { cursor: pointer; font-weight: 600; color: var(--text-secondary); }
+  footer.note .sobre p { margin: 8px 0 0; max-width: 72ch; }
 </style>
 </head>
 <body class="viz-root">
@@ -740,6 +743,18 @@
     entrada + saída + cache criado, cada resposta uma vez; o cache lido (a conversa relida a cada resposta) fica só como
     secundária. O Claude Code apaga transcripts antigos depois de um tempo, então o histórico começa no que ainda existia na
     primeira vez que o script rodou; rodar de novo de vez em quando mantém os dias já registrados.
+    <details class="sobre">
+      <summary>Fascínio por dados — por que esta skill existe</summary>
+      <p>Esta skill existe por causa de um fascínio meu por números. Eu me viciei em monitorar quanto gastava de tokens por dia
+      e me incomodava quando não “torrava” o que tinha me proposto. Virou um jogo comigo mesmo: me empurrava a sentar e
+      usar o Claude Code todo dia, aprender, me superar — e, por consequência, criar coisas que eu não teria criado sem esse
+      empurrão. Sem esse fascínio, eu provavelmente teria largado a ferramenta, e esta skill nem existiria.</p>
+      <p>Sei que o que importa de verdade é o que se constrói — coisas incríveis, úteis, necessárias —, não a quantidade de
+      tokens. Gastar token não é mérito por si só: para mim é um termômetro que me mantém em movimento.</p>
+      <p>Cada pessoa tem o seu objetivo. Tem quem queira o contrário: economizar, ficar dentro de um limite. Por isso o painel
+      deixa escolher entre “atingir uma meta” e “ficar dentro de um limite” — a conta é a mesma, muda só a frase. Use do jeito
+      que te ajudar. — Otávio</p>
+    </details>
     <span class="credito">{{CREDITO}}</span>
   </footer>
 
