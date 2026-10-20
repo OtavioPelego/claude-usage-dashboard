@@ -64,14 +64,15 @@ arquivos existir, mande o HTML para a pessoa.
   se a pessoa perguntar, que o total ao longo do tempo é a parte mais confiável, mais que cada dia isolado. A
   **"Contagem Alternativa"** ("sem cache lido") soma entrada + saída + cache criado, cada resposta uma vez — mostra o
   volume de contexto processado e é bem maior.
-- **No topo:** um card com **Meta Diária e Meta Semanal** (consumido hoje / na semana e o % de cada meta), centralizado
+- **No topo:** um card com **Meta Diária, Semanal e Mensal** (consumido hoje / na semana / no mês e o % de cada meta), centralizado
   logo abaixo do título (a explicação da contagem fica recolhida em "explicação ▾"). As metas são **fixas e da própria pessoa** (botão "editar metas", salvas no navegador, uma para cada
   contagem); sem metas salvas, o painel sugere pela média dos últimos 30 dias. Há também a escolha de **Objetivo**:
   "atingir uma meta" (para se desafiar, por exemplo) ou "ficar dentro de um limite" (para economizar) — a conta é a mesma,
   mas as frases mudam ("Quanto por dia até a meta?" × "Quanto ainda posso gastar?", "Meta Diária" × "Limite Diário").
   Nenhum dos dois é "o certo": a pessoa escolhe o que a ajuda.
-- **Cores:** o botão "cores ▾" (ao lado de Objetivo) abre presets (Original, Oceano, Pôr do sol, Floresta, Rosa) e três
-  seletores livres — barras, fim de semana e destaque (calendário e metas batidas). "Original" é o padrão; a escolha fica
+- **Cores:** o botão "cores ▾" (ao lado de Objetivo) abre presets (Rave, Primária, Oceano, Pôr do sol, Floresta, Rosa) e três
+  seletores livres — barras, fim de semana e destaque (calendário e metas batidas). "Rave" é o padrão e "Primária" são as
+  cores originais (azul, laranja e verde); a escolha fica
   salva no navegador e vale nos temas claro e escuro.
 - **A página:** setores recolhíveis (só o "Geral" abre sozinho; a escolha de cada pessoa fica lembrada), um "?" em cada
   métrica explicando o que ela é, e um filtro de **período** (atalhos de 7 a 180 dias, "últimos N dias" e um intervalo de

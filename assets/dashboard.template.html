@@ -152,7 +152,7 @@
   .top-right { display: contents; }
   .theme-toggle { grid-area: tema; align-self: start; }
   /* O card se adapta ao ESPAÇO QUE TEM (consulta de contêiner), não só à largura da tela: assim fica harmônico em telas e
-     níveis de zoom diferentes. Estreito = HOJE e SEMANA empilhados; largo = lado a lado; números crescem e encolhem junto. */
+     níveis de zoom diferentes. Estreito = HOJE, SEMANA e MÊS empilhados; médio = Mês embaixo, de ponta a ponta; largo = os três lado a lado; números crescem e encolhem junto. */
   .meta-card { position: relative; container-type: inline-size; grid-area: card; justify-self: center; width: min(100%, 680px); margin: 6px 0 8px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px 10px; }
   .mc-grade { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .mc-bloco { min-width: 0; }
@@ -160,6 +160,11 @@
   @container (min-width: 420px) {
     .mc-grade { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 18px; }
     .mc-bloco + .mc-bloco { padding-top: 0; border-top: 0; padding-left: 18px; border-left: 1px solid var(--grid); }
+    .mc-bloco:nth-child(3) { grid-column: 1 / -1; margin-top: 10px; padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--grid); }
+  }
+  @container (min-width: 560px) {
+    .mc-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .mc-bloco:nth-child(3) { grid-column: auto; margin-top: 0; padding: 0 0 0 18px; border-top: 0; border-left: 1px solid var(--grid); }
   }
   .mc-rot { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
   .mc-consumo, .mc-pct { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
@@ -2204,7 +2209,7 @@
   // Mouse: a explicação aparece ao passar por cima do cartão. Toque (celular/tablet não tem "passar por cima"):
   // toque no "?" do canto; toque fora, Esc ou rolar a página fecha. Teclado: o "?" recebe foco e Enter fixa/solta.
   const AJUDA = {
-    "Meta diária e semanal": () => `Metas FIXAS que você define para o dia e para a semana (a semana começa como escolhido em “Semana começa”, no calendário). Mostra quanto já foi consumido hoje e na semana atual, na contagem escolhida, e que % isso é da meta.
+    "Meta diária e semanal": () => `Metas FIXAS que você define para o dia, para a semana e para o mês (a semana começa como escolhido em “Semana começa”, no calendário). Mostra quanto já foi consumido hoje, na semana atual e no mês atual, na contagem escolhida, e que % isso é da meta. Sem meta mensal salva, ela é a diária × os dias do mês.
 
 Sem metas salvas, o painel sugere uma a partir da sua média dos últimos 30 dias — use “editar metas” para fixar as suas. Cada contagem tem as suas metas, porque os totais têm escalas diferentes. No objetivo “ficar dentro de um limite”, viram limites e a barra muda de cor quando passam de 100%.`,
     "Objetivo: atingir uma meta": () => `Você quer chegar a um total de tokens (por exemplo, para se desafiar a usar mais, ou para cumprir um volume combinado).
@@ -2331,20 +2336,25 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
   function metaAtual() {
     const m = metasSalvas[modo] || {}, d0 = Math.max(1, niceK(windowStats(30).rate * 1.1));
     const temD = m.d > 0, temS = m.s > 0;
-    return { d: temD ? m.d : d0, s: temS ? m.s : (temD ? m.d * 7 : d0 * 7), sugerida: !temD && !temS };
+    const dd = temD ? m.d : d0, h = new Date(), diasMes = new Date(h.getFullYear(), h.getMonth() + 1, 0).getDate();
+    return { d: dd, s: temS ? m.s : dd * 7, m: m.m > 0 ? m.m : dd * diasMes, sugerida: !temD && !temS };
   }
   function consumosDeHoje() {
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
     const iniSem = inicioDaSemana(hoje);
-    let d = 0, s = 0;
-    RAW.forEach(r => { if (r.date.getTime() === hoje.getTime()) d += r.k; if (r.date >= iniSem && r.date <= hoje) s += r.k; });
-    return { d, s };
+    let d = 0, s = 0, m = 0;
+    RAW.forEach(r => {
+      if (r.date.getTime() === hoje.getTime()) d += r.k;
+      if (r.date >= iniSem && r.date <= hoje) s += r.k;
+      if (r.date <= hoje && r.date.getFullYear() === hoje.getFullYear() && r.date.getMonth() === hoje.getMonth()) m += r.k;
+    });
+    return { d, s, m };
   }
   function renderMetaCard() {
     const corpo = document.getElementById("mcCorpo");
     if (!corpo) return;
     const lim = objetivo === "limite", g = metaAtual(), c = consumosDeHoje();
-    const nomeD = lim ? "Limite Diário" : "Meta Diária", nomeS = lim ? "Limite Semanal" : "Meta Semanal";
+    const nomeD = lim ? "Limite Diário" : "Meta Diária", nomeS = lim ? "Limite Semanal" : "Meta Semanal", nomeM = lim ? "Limite Mensal" : "Meta Mensal";
     corpo.innerHTML = "";
     const bloco = (rot, consumoTxt, k, meta, nome) => {
       const pct = meta > 0 ? k / meta * 100 : 0;
@@ -2363,7 +2373,7 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
       return div;
     };
     const grade = document.createElement("div"); grade.className = "mc-grade";
-    grade.append(bloco("Hoje", "hoje", c.d, g.d, nomeD), bloco("Semana", "na semana", c.s, g.s, nomeS));
+    grade.append(bloco("Hoje", "hoje", c.d, g.d, nomeD), bloco("Semana", "na semana", c.s, g.s, nomeS), bloco("Mês", "no mês", c.m, g.m, nomeM));
     corpo.appendChild(grade);
     const rod = document.createElement("div"); rod.className = "mc-rodape";
     const be = document.createElement("button"); be.type = "button"; be.textContent = metaEditando ? "fechar" : "editar metas";
@@ -2382,12 +2392,12 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
         const v = parseFloat(i.value);
         if (!(v > 0)) { renderMetaCard(); return; }
         const atual = metaAtual();
-        metasSalvas[modo] = { d: atual.d, s: atual.s }; metasSalvas[modo][chave] = v * 1000;
+        metasSalvas[modo] = { d: atual.d, s: atual.s, m: atual.m }; metasSalvas[modo][chave] = v * 1000;
         salvarMetas(); renderMetaCard();
       });
       l.appendChild(i); return l;
     };
-    ed.append(campo(lim ? "Limite diário" : "Meta diária", g.d, "d"), campo(lim ? "Limite semanal" : "Meta semanal", g.s, "s"));
+    ed.append(campo(lim ? "Limite diário" : "Meta diária", g.d, "d"), campo(lim ? "Limite semanal" : "Meta semanal", g.s, "s"), campo(lim ? "Limite mensal" : "Meta mensal", g.m, "m"));
     corpo.appendChild(ed);
   }
   function salvarMetas() { try { localStorage.setItem(METAS_KEY, JSON.stringify(metasSalvas)); } catch (e) { /* vale só nesta visita */ } }
@@ -2649,12 +2659,14 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
   paintThemeBtn();
 
   // ---- cores de destaque ------------------------------------------------------------------------------------------
-  // "Original" é o padrão e não grava nada. Qualquer outra escolha vira variáveis CSS no <body> (barras, fim de semana e
+  // "Rave" é o padrão (sem escolha salva); "Primária" são as cores originais. Qualquer escolha vira variáveis CSS no <body> (barras, fim de semana e
   // destaque do calendário/metas batidas), fica salva neste navegador e vale nos dois temas. Os gráficos só usam variáveis
   // CSS, então nada é redesenhado.
   const CORES_KEY = "dash-cores";
   const CORES_ORIGINAL = { w: "#2a78d6", f: "#eb6834", n: "#1fe035" };
   const CORES_PRESETS = [
+    { nome: "Rave", w: "#7de10f", f: "#3c14c8", n: "#194be1" },   // padrão
+    { nome: "Primária", original: true },
     { nome: "Oceano", w: "#0e7c86", f: "#f4a259", n: "#2de2e6" },
     { nome: "Pôr do sol", w: "#8e44ad", f: "#ff7043", n: "#ffd54a" },
     { nome: "Floresta", w: "#2e7d32", f: "#c77d3a", n: "#a6ff3d" },
@@ -2679,10 +2691,10 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
     coresPresetsEl.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(mesmaCor(c || CORES_ORIGINAL, JSON.parse(b.dataset.cores)) && (b.dataset.original === "1") === !c)));
   }
   function salvarCores() {
-    try { if (coresAtual) localStorage.setItem(CORES_KEY, JSON.stringify(coresAtual)); else localStorage.removeItem(CORES_KEY); } catch (e) { /* vale só nesta visita */ }
+    try { localStorage.setItem(CORES_KEY, JSON.stringify(coresAtual || { original: true })); } catch (e) { /* vale só nesta visita */ }
   }
   coresPresetsEl.textContent = "";
-  [{ nome: "Original", original: true }].concat(CORES_PRESETS).forEach(p => {
+  CORES_PRESETS.forEach(p => {
     const b = document.createElement("button");
     b.type = "button"; b.className = "cp-pt";
     const c = p.original ? CORES_ORIGINAL : p;
@@ -2699,8 +2711,12 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
     coresBtn.setAttribute("aria-expanded", String(!coresPainel.hidden));
     coresBtn.textContent = coresPainel.hidden ? "cores ▾" : "cores ▴";
   });
-  let coresSalvas = null;
-  try { const j = JSON.parse(localStorage.getItem(CORES_KEY) || "null"); if (j && /^#[0-9a-f]{6}$/i.test(j.w) && /^#[0-9a-f]{6}$/i.test(j.f) && /^#[0-9a-f]{6}$/i.test(j.n)) coresSalvas = { w: j.w, f: j.f, n: j.n }; } catch (e) { /* sem armazenamento ou valor inválido: fica o Original */ }
+  let coresSalvas = { w: CORES_PRESETS[0].w, f: CORES_PRESETS[0].f, n: CORES_PRESETS[0].n };   // sem escolha salva: Rave
+  try {
+    const j = JSON.parse(localStorage.getItem(CORES_KEY) || "null");
+    if (j && j.original) coresSalvas = null;
+    else if (j && /^#[0-9a-f]{6}$/i.test(j.w) && /^#[0-9a-f]{6}$/i.test(j.f) && /^#[0-9a-f]{6}$/i.test(j.n)) coresSalvas = { w: j.w, f: j.f, n: j.n };
+  } catch (e) { /* sem armazenamento ou valor inválido: fica o Rave */ }
   aplicarCores(coresSalvas);
 
   // controles do calendário: forma, quanto mostrar (depende da forma) e primeiro dia da semana
