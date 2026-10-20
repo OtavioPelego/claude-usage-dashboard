@@ -1,0 +1,2692 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consumo de tokens — Claude</title>
+<script>
+  // tema escolhido no botão, aplicado antes de a página aparecer (sem piscar); sem escolha, segue o sistema
+  try { var t = localStorage.getItem("tema-dashboard"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+</script>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --good:           #006300;
+
+    --series-weekday: #2a78d6;   /* categorical slot 1 - blue */
+    --series-weekend: #eb6834;   /* categorical slot 2 - orange */
+    --seq-100: #cde2fb; --seq-200: #9ec5f4; --seq-300: #6da7ec;
+    --seq-400: #3987e5; --seq-450: #2a78d6; --seq-500: #256abf;
+    --neon: #1fe035;        /* barrinha do calendário de uso */
+    --neon-edge: #0a7a1a;   /* contorno que segura a barra no fundo claro */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --good:           #0ca30c;
+
+      --series-weekday: #3987e5;
+      --series-weekend: #d95926;
+      --seq-100: #184f95; --seq-200: #1c5cab; --seq-300: #256abf;
+      --seq-400: #2a78d6; --seq-450: #3987e5; --seq-500: #5598e7;
+      --neon: #39ff14;
+      --neon-edge: #39ff14;
+    }
+  }
+
+  /* escolha manual (botão no topo): vale por cima do tema do sistema */
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page:           #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --good:           #0ca30c;
+
+    --series-weekday: #3987e5;
+    --series-weekend: #d95926;
+    --seq-100: #184f95; --seq-200: #1c5cab; --seq-300: #256abf;
+    --seq-400: #2a78d6; --seq-450: #3987e5; --seq-500: #5598e7;
+    --neon: #39ff14;
+    --neon-edge: #39ff14;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body.viz-root {
+    background: var(--page);
+    color: var(--text-primary);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 20px 60px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  /* Cabeçalho em grade, igual em qualquer tela: título + botão de tema; logo abaixo, centralizado, o card de meta
+     (HOJE e SEMANA); depois a descrição e a faixa de controles (Contagem / Objetivo). */
+  header.top { margin-bottom: 22px; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto auto; grid-template-areas: "titulo tema" "card card" "desc desc" "ctrl ctrl";
+    column-gap: 16px; row-gap: 0; align-items: start; }
+  header.top > div:first-child { display: contents; }
+  header.top h1 { grid-area: titulo; }
+  header.top p { grid-area: desc; }
+  .theme-toggle {
+    flex: none; font: inherit; font-size: 13px; font-weight: 550; white-space: nowrap;
+    background: var(--surface-1); color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--text-primary); border-color: var(--text-muted); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--series-weekday); outline-offset: 2px; }
+  header.top h1 { font-size: 22px; font-weight: 650; margin: 0 0 4px; }
+  header.top p { margin: 0; color: var(--text-secondary); font-size: 13.5px; }
+  a { color: var(--series-weekday); }
+
+  /* filters */
+  .filters {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    margin: 18px 0 16px;
+  }
+  .filters .label { color: var(--text-muted); font-size: 12.5px; margin-right: 6px; }
+  .filters button {
+    font: inherit; font-size: 13px; font-weight: 550;
+    background: transparent; color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 6px 12px; cursor: pointer;
+  }
+  .filters button:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+  .controles { grid-area: ctrl; align-self: start; margin-top: 14px; min-width: 0; }
+  .controles .filters.contagem { margin: 0 0 4px; }
+  .controles .filters.objetivo { margin: 0; }
+  .nota-toggle { border-style: dashed !important; font-weight: 500 !important; color: var(--text-muted) !important; }
+  .controles .contagem-nota { margin: 0 0 8px; max-width: 70ch; }
+
+  /* reordenar setores: no modo, todos viram uma lista recolhida com alça (arrastar) e botões ▲▼ */
+  .sec-ordem { display: none; align-items: center; gap: 6px; margin: 0 0 8px; }
+  body.reordenando .collapsible > .sec-ordem { display: flex !important; }
+  body.reordenando .collapsible > :not(h2):not(.sec-toggle):not(.sec-ordem) { display: none !important; }
+  body.reordenando .sec-toggle { display: none; }
+  body.reordenando .collapsible > h2 { cursor: grab; }
+  .sec-alca { cursor: grab; color: var(--text-muted); font-size: 18px; line-height: 1; padding: 0 6px; user-select: none; }
+  .sec-ordem button { font: inherit; font-size: 12px; font-weight: 600; width: 30px; height: 26px; padding: 0; color: var(--text-secondary); background: transparent; border: 1px solid var(--border); border-radius: 7px; cursor: pointer; }
+  .sec-ordem button:hover:not(:disabled) { background: color-mix(in srgb, var(--text-primary) 6%, transparent); color: var(--text-primary); }
+  .sec-ordem button:disabled { opacity: 0.35; cursor: default; }
+  .sec-arrastando { opacity: 0.45; }
+  .sec-solta-antes { box-shadow: 0 -4px 0 0 var(--series-weekday); }
+  .sec-solta-depois { box-shadow: 0 4px 0 0 var(--series-weekday); }
+
+  /* card de meta diária/semanal: canto superior direito, abaixo do botão de tema */
+  .top-right { display: contents; }
+  .theme-toggle { grid-area: tema; align-self: start; }
+  /* O card se adapta ao ESPAÇO QUE TEM (consulta de contêiner), não só à largura da tela: assim fica harmônico em telas e
+     níveis de zoom diferentes. Estreito = HOJE e SEMANA empilhados; largo = lado a lado; números crescem e encolhem junto. */
+  .meta-card { position: relative; container-type: inline-size; grid-area: card; justify-self: center; width: min(100%, 680px); margin: 6px 0 8px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px 10px; }
+  .mc-grade { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .mc-bloco { min-width: 0; }
+  .mc-bloco + .mc-bloco { padding-top: 10px; border-top: 1px solid var(--grid); }
+  @container (min-width: 420px) {
+    .mc-grade { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 18px; }
+    .mc-bloco + .mc-bloco { padding-top: 0; border-top: 0; padding-left: 18px; border-left: 1px solid var(--grid); }
+  }
+  .mc-rot { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  .mc-consumo, .mc-pct { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
+  .mc-consumo { margin-top: 2px; }
+  .mc-consumo strong { font-size: clamp(20px, 8cqi, 28px); font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; color: var(--text-primary); }
+  .mc-pct strong { font-size: clamp(17px, 6.5cqi, 22px); font-weight: 700; line-height: 1.2; color: var(--text-primary); }
+  .mc-rot, .mc-nota { overflow-wrap: anywhere; }
+  .mc-barra { height: 8px; border-radius: 4px; background: var(--grid); overflow: hidden; margin-top: 6px; }
+  .mc-barra i { display: block; height: 100%; border-radius: 4px; background: var(--series-weekday); min-width: 2px; }
+  .mc-ok .mc-barra i { background: var(--neon); box-shadow: 0 0 6px color-mix(in srgb, var(--neon) 60%, transparent); }
+  .mc-estouro .mc-barra i { background: var(--series-weekend); }
+  .mc-nota { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+  .mc-rodape { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .mc-rodape button { font: inherit; font-size: 12px; font-weight: 550; color: var(--text-secondary); background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 3px 9px; cursor: pointer; }
+  .mc-rodape button:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); color: var(--text-primary); }
+  .mc-sug { font-size: 11.5px; color: var(--text-muted); }
+  .mc-edicao { margin-top: 8px; display: grid; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
+  .mc-edicao[hidden] { display: none; }
+  .mc-edicao label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mc-edicao input { width: 90px; font: inherit; font-size: 13px; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 7px; padding: 4px 7px; }
+  /* (o cabeçalho já é fluido: não precisa de regras separadas para celular) */
+  .filters.contagem button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .contagem-nota { margin: 0 0 6px; }
+  .filters.proj-goal { gap: 5px; }
+  .filters.proj-goal button { padding: 5px 9px; font-size: 12.5px; }
+  .filters button[aria-pressed="true"] {
+    background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary);
+  }
+
+  /* KPI row */
+  .kpis {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+  .tile {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 14px 12px;
+  }
+  .tile .label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .tile .value { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  .tile .sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+  .tile .sub.good { color: var(--good); }
+
+  /* cards */
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 18px 14px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14.5px; font-weight: 650; margin: 0 0 2px; }
+  .card .card-sub { font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px; }
+
+  .legend { display: flex; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  .chart-scroll { overflow-x: auto; padding-bottom: 4px; }
+  svg text { font-family: inherit; }
+  .axis-label { fill: var(--text-muted); font-size: 10.5px; }
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .baseline { stroke: var(--baseline); stroke-width: 1; }
+  .bar { cursor: pointer; }
+  .bar:hover, .bar.hovered { filter: brightness(1.08); }
+  .bar.parcial { opacity: 0.45; }
+  .parcial-label { fill: var(--text-muted); font-size: 10px; font-weight: 600; }
+  .month-tick { fill: var(--text-secondary); font-size: 11px; font-weight: 600; }
+
+  /* calendário de uso */
+  .cal-months { display: grid; grid-template-columns: repeat(auto-fill, minmax(238px, 1fr)); gap: 22px 20px; }
+  .cal-month h3 { font-size: 13px; font-weight: 650; margin: 0 0 1px; }
+  .cal-view { margin: 0 0 6px; }
+  .filters.cal-opts, .filters.cal-start { margin: 0 0 6px; }
+  .cal-resumo { font-size: 12px; color: var(--text-muted); margin: 4px 0 12px; }
+  /* visão em quadradinhos: uma coluna por semana (seg→dom), como no painel do Claude Code */
+  .sq-scroll { overflow-x: auto; padding: 2px 2px 6px; }
+  .sq-wrap { display: inline-flex; gap: 4px; }
+  .sq-week { display: flex; flex-direction: column; gap: 4px; width: 17px; }
+  .sq-label { height: 14px; font-size: 10.5px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; overflow: visible; }
+  .sq-dow { display: flex; flex-direction: column; gap: 4px; margin-right: 4px; }
+  .sq-dow span { height: 17px; font-size: 10px; line-height: 17px; color: var(--text-muted); }
+  .sq-dow .sq-label { visibility: hidden; }
+  .sq { width: 17px; height: 17px; border-radius: 4px; background: var(--grid); border: 1px solid transparent; }
+  .sq.fora { background: none; }
+  .sq.apagado { opacity: 0.35; }
+
+  /* detalhes: barras horizontais (por modelo, projeto, aparelho) e mapa de horário */
+  .barras { display: grid; gap: 6px; }
+  .barra-linha { display: grid; grid-template-columns: minmax(110px, 210px) 1fr auto; align-items: center; gap: 10px; font-size: 13px; }
+  .barra-nome { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .barra-trilho { height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden; }
+  .barra-trilho i { display: block; height: 100%; background: var(--series-weekday); border-radius: 5px; min-width: 2px; }
+  .barra-valor { color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  @media (max-width: 560px) { .barra-linha { grid-template-columns: 1fr auto; } .barra-trilho { grid-column: 1 / -1; order: 3; } }
+  .vazio-det { font-size: 12.5px; color: var(--text-muted); margin: 0; }
+  .filters.det-opts { margin: 0 0 10px; }
+  .hm-scroll { overflow-x: auto; padding-bottom: 4px; }
+  .hm { display: grid; grid-template-columns: 34px repeat(24, 18px); gap: 3px; align-items: center; width: max-content; }
+  .hm-h { font-size: 10px; color: var(--text-muted); text-align: center; }
+  .hm-d { font-size: 11px; color: var(--text-muted); }
+  .hm-c { width: 18px; height: 18px; border-radius: 4px; background: var(--grid); }
+  .hm-c.uso { background: color-mix(in srgb, var(--neon) var(--lvl, 100%), transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neon-edge) 70%, transparent); cursor: pointer; }
+  .hm-c.forte { box-shadow: inset 0 0 0 1px var(--neon-edge), 0 0 6px 1px color-mix(in srgb, var(--neon) 60%, transparent); }
+  .sq.hoje { outline: 2px solid var(--text-primary); }
+  .sq.uso { cursor: pointer; background: color-mix(in srgb, var(--neon) var(--lvl, 100%), transparent);
+            box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neon-edge) 70%, transparent); }
+  .sq.forte { box-shadow: inset 0 0 0 1px var(--neon-edge), 0 0 7px 1px color-mix(in srgb, var(--neon) 65%, transparent); }
+  .sq.parcial { opacity: 0.55; }
+  .sq.uso:hover, .sq.uso:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: 0; }
+  .cal-month .cal-meta { font-size: 11.5px; color: var(--text-muted); margin: 0 0 8px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-dow { font-size: 10.5px; color: var(--text-muted); text-align: center; padding-bottom: 2px; }
+  .cal-day {
+    position: relative; height: 38px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--surface-1);
+    padding: 3px 5px; font-size: 10.5px; color: var(--text-secondary); line-height: 1;
+  }
+  .cal-day.vazio { border-color: transparent; background: none; }
+  .cal-day.futuro { opacity: 0.4; }
+  .cal-day.hoje { outline: 2px solid var(--text-primary); outline-offset: 0; }
+  .cal-day .cal-bar {
+    position: absolute; left: 4px; right: 4px; bottom: 4px; height: 8px; border-radius: 4px;
+    background: var(--grid);
+  }
+  .cal-day.uso { cursor: pointer; }
+  .cal-day.uso .cal-bar {
+    background: color-mix(in srgb, var(--neon) var(--lvl, 100%), transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neon-edge) 70%, transparent);
+  }
+  .cal-day.forte .cal-bar { box-shadow: inset 0 0 0 1px var(--neon-edge), 0 0 7px 1px color-mix(in srgb, var(--neon) 65%, transparent); }
+  .cal-day.parcial .cal-bar { opacity: 0.55; }
+  .cal-day.uso:hover, .cal-day.uso:focus-visible { border-color: var(--text-secondary); outline: none; }
+  .legend .scale { display: inline-flex; gap: 3px; align-items: center; }
+  .legend .scale i { width: 16px; height: 8px; border-radius: 4px; display: inline-block; }
+
+  /* tooltip */
+  .tooltip {
+    position: fixed; pointer-events: none; z-index: 50;
+    background: var(--text-primary); color: var(--surface-1);
+    border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+    opacity: 0; transform: translate(-50%, calc(-100% - 10px));
+    transition: opacity 0.08s ease;
+    max-width: 220px;
+  }
+  .tooltip.show { opacity: 1; }
+  .tooltip .t-date { font-weight: 650; margin-bottom: 3px; }
+  .tooltip .t-row { display: flex; justify-content: space-between; gap: 14px; }
+  .tooltip .t-val { font-weight: 650; }
+  .tooltip .t-kind { color: color-mix(in srgb, var(--surface-1) 65%, transparent); font-size: 11.5px; }
+
+  /* projection */
+  .proj-custom { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; }
+  .proj-custom[hidden] { display: none; }
+  .proj-custom label { font-size: 12.5px; color: var(--text-secondary); }
+  .proj-custom input {
+    font: inherit; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums;
+    width: 100px; padding: 6px 10px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+  }
+  .proj-custom input:focus { outline: 2px solid var(--series-weekday); outline-offset: 1px; }
+  .proj-custom .unit { font-size: 12.5px; color: var(--text-muted); }
+  .proj-hero { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .proj-hero .n { font-size: 48px; font-weight: 700; letter-spacing: -0.02em; }
+  .proj-hero .unit { font-size: 15px; color: var(--text-secondary); }
+  .proj-date { font-size: 13.5px; color: var(--text-secondary); margin-bottom: 2px; }
+  .proj-rate-note { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
+  .meter-track {
+    height: 10px; border-radius: 6px; background: var(--seq-100);
+    overflow: hidden; margin-bottom: 6px;
+  }
+  .meter-fill { height: 100%; background: var(--seq-450); border-radius: 6px; }
+  .meter-caption { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 18px; }
+  .scenarios { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .scenarios th, .scenarios td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  .scenarios th { color: var(--text-muted); font-weight: 550; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .scenarios td.num, .scenarios th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scenarios tr:last-child td { border-bottom: none; }
+  .scenarios tr.selected td { background: color-mix(in srgb, var(--series-weekday) 12%, transparent); font-weight: 650; }
+  .scenarios tr.selected td:first-child { border-radius: 6px 0 0 6px; }
+  .scenarios tr.selected td:last-child { border-radius: 0 6px 6px 0; }
+
+  /* insights */
+  .section-h { font-size: 14.5px; font-weight: 650; margin: 0 0 2px; }
+  .section-sub { font-size: 12.5px; color: var(--text-muted); margin: 0 0 12px; }
+  .insights-wrap { margin-bottom: 16px; }
+
+  /* seções recolhíveis: botão no canto de cada card (e clicar no título também abre/fecha) */
+  .card, .insights-wrap { position: relative; }
+  .collapsible > h2 { cursor: pointer; padding-right: 96px; }
+  .sec-toggle {
+    position: absolute; top: 12px; right: 12px; display: inline-flex; align-items: center; gap: 5px;
+    font: inherit; font-size: 12px; font-weight: 550; color: var(--text-secondary); background: transparent;
+    border: 1px solid var(--border); border-radius: 7px; padding: 3px 9px; cursor: pointer;
+  }
+  .sec-toggle:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); color: var(--text-primary); }
+  .sec-toggle:focus-visible, .info-btn:focus-visible { outline: 2px solid var(--series-weekday); outline-offset: 2px; }
+  .sec-ico { display: inline-block; transition: transform 0.12s ease; }
+  .collapsed .sec-ico { transform: rotate(-90deg); }
+  .collapsible.collapsed > :not(h2):not(.sec-toggle) { display: none !important; }   /* !important: o calendário em quadradinhos define display inline */
+  .collapsible.collapsed > h2 { margin-bottom: 0; }
+  .insights-wrap.collapsed { padding-bottom: 4px; }
+  @media (max-width: 560px) { .sec-txt { display: none; } .collapsible > h2 { padding-right: 44px; } }
+  .filters.secoes { margin-top: 0; }
+  .periodo-vinculo { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
+  .period-custom { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin: -6px 0 10px; font-size: 13px; color: var(--text-secondary); }
+  .period-custom[hidden] { display: none; }
+  .period-custom label { display: inline-flex; align-items: center; gap: 6px; }
+  .period-custom input { font: inherit; font-size: 13px; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; }
+  .period-custom input[type="number"] { width: 70px; }
+  .period-custom input:focus { outline: 2px solid var(--series-weekday); outline-offset: 1px; }
+  #periodoResumo { margin: 0 0 12px; }
+  #calJanela.desativado { opacity: 0.45; pointer-events: none; }
+  .card.geral .kpis:last-child { margin-bottom: 4px; }
+
+  /* "?" no canto de cada métrica: no mouse a explicação aparece ao passar por cima; no toque, ao tocar no botão */
+  .tile, .insight { position: relative; }
+  .has-info .label, .insight.has-info .tag { padding-right: 26px; }
+  .info-btn {
+    position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; padding: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    font: inherit; font-size: 11.5px; font-weight: 650; line-height: 1;
+    color: var(--text-muted); background: transparent; border: 1px solid var(--border);
+  }
+  .info-btn::after { content: ""; position: absolute; inset: -8px; }   /* área de toque maior que o botão */
+  .info-btn:hover, .info-btn[aria-expanded="true"] { color: var(--text-primary); border-color: var(--text-muted); }
+  .infotip {
+    position: fixed; z-index: 60; pointer-events: none; opacity: 0; transition: opacity 0.08s ease;
+    width: max-content; max-width: min(280px, calc(100vw - 16px));
+    background: var(--text-primary); color: var(--surface-1); border-radius: 8px; padding: 9px 11px;
+    font-size: 12.5px; line-height: 1.45; box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+  }
+  .infotip.show { opacity: 1; }
+  .infotip { white-space: pre-line; }   /* os textos longos (como cada contagem é construída) têm parágrafos */
+  .infotip.larga { max-width: min(380px, calc(100vw - 16px)); }
+  .op-contagem { display: inline-flex; align-items: center; gap: 4px; position: relative; }
+  .op-contagem .info-btn { position: static; flex: none; }
+  .op-contagem .info-btn::after { inset: -6px; }
+  .insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 900px) { .insights { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .insights { grid-template-columns: 1fr; } }
+  .insight { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .insight .tag { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
+  .insight .headline { font-size: 15px; font-weight: 650; line-height: 1.35; margin-bottom: 4px; }
+  .insight .detail { font-size: 12.5px; color: var(--text-secondary); }
+  .insight .mini { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12.5px; }
+  .insight .mini th, .insight .mini td { padding: 5px 0; text-align: right; font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--border); }
+  .insight .mini th:first-child, .insight .mini td:first-child { text-align: left; color: var(--text-secondary); }
+  .insight .mini th { color: var(--text-muted); font-weight: 550; font-size: 11px; }
+  .insight .mini td { font-weight: 600; }
+  .insight .mini td:first-child { font-weight: 400; }
+  .insight .mini tr:last-child td { border-bottom: none; }
+
+  /* line charts */
+  .legend .keyline { width: 18px; height: 0; border-top: 2px solid; display: inline-block; }
+  .legend .keyline.dashed { border-top-style: dashed; }
+  .ma-line { fill: none; stroke: var(--text-primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+  .ma-dot { stroke: var(--surface-1); stroke-width: 2; fill: var(--text-primary); pointer-events: none; }
+  .cum-area { fill: var(--series-weekday); opacity: 0.10; pointer-events: none; }
+  .cum-line { fill: none; stroke: var(--series-weekday); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+  .cum-proj { fill: none; stroke: var(--series-weekday); stroke-width: 2; stroke-dasharray: 5 4; stroke-linecap: round; pointer-events: none; }
+  .cum-dot { stroke: var(--surface-1); stroke-width: 2; fill: var(--series-weekday); pointer-events: none; }
+  .goal-line { stroke: var(--text-secondary); stroke-width: 1; opacity: 0.6; pointer-events: none; }
+  .crosshair { stroke: var(--baseline); stroke-width: 1; pointer-events: none; }
+  .end-label { fill: var(--text-secondary); font-size: 11px; font-weight: 600; pointer-events: none; }
+
+  /* calculadora */
+  .calc-grid { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 14px; }
+  .calc-field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-secondary); }
+  .calc-input { display: flex; align-items: center; gap: 8px; }
+  .calc-input input {
+    font: inherit; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums;
+    width: 120px; padding: 6px 10px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+  }
+  .calc-input input[type="date"] { width: 150px; }
+  .calc-input input:focus { outline: 2px solid var(--series-weekday); outline-offset: 1px; }
+  .calc-input i { font-style: normal; font-size: 12px; color: var(--text-muted); }
+  .calc-warn { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 12px; }
+  .calc-warn[hidden] { display: none; }
+  .calc-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+  @media (max-width: 900px) { .calc-results { grid-template-columns: repeat(2, 1fr); } }
+  .calc-verdict { font-size: 13px; color: var(--text-secondary); margin: 0 0 6px; }
+  .calc-note { font-size: 12px; color: var(--text-muted); margin: 0 0 16px; }
+
+  details.table-view summary {
+    cursor: pointer; font-size: 13px; color: var(--text-secondary); font-weight: 550;
+    padding: 4px 0;
+  }
+  table.raw { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+  table.raw th, table.raw td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+  table.raw th:first-child, table.raw td:first-child { text-align: left; }
+  table.raw th { color: var(--text-muted); font-weight: 550; position: sticky; top: 0; background: var(--surface-1); }
+  .raw-scroll { max-height: 360px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+
+  footer.note { color: var(--text-muted); font-size: 12px; margin-top: 22px; line-height: 1.6; }
+  footer.note .credito { display: block; margin-top: 10px; }
+</style>
+</head>
+<body class="viz-root">
+<div class="wrap">
+
+  <header class="top">
+    <div>
+    <h1>Consumo de tokens — Claude</h1>
+    <p>Métrica principal: <strong class="mnome">entrada + saída</strong> <span id="metricaDef"></span>, somada dos registros locais do Claude Code · atualizado até <strong id="lastDateLabel"></strong></p>
+    </div>
+    <div class="top-right">
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="Alternar entre modo claro e modo escuro"></button>
+      <div class="meta-card" id="metaCard"><div id="mcCorpo"></div></div>
+    </div>
+    <div class="controles">
+  <div class="filters contagem" role="group" aria-label="Contagem">
+    <span class="label">Contagem</span>
+    <span class="op-contagem" data-info="Contagem Claude Code"><button data-contagem="antigo" aria-pressed="true">Contagem Claude Code</button></span>
+    <span class="op-contagem" data-info="Contagem Alternativa"><button data-contagem="atual">Contagem Alternativa</button></span>
+    <button type="button" class="nota-toggle" id="notaToggle" aria-expanded="false" aria-controls="contagemNota">explicação ▾</button>
+  </div>
+  <div class="section-sub contagem-nota" id="contagemNota" hidden></div>
+
+  <div class="filters objetivo" role="group" aria-label="Objetivo">
+    <span class="label">Objetivo</span>
+    <span class="op-contagem" data-info="Objetivo: atingir uma meta"><button data-objetivo="atingir" aria-pressed="true">Atingir uma meta</button></span>
+    <span class="op-contagem" data-info="Objetivo: ficar dentro de um limite"><button data-objetivo="limite">Ficar dentro de um limite</button></span>
+  </div>
+    </div>
+  </header>
+
+  <div class="filters period" role="group" aria-label="Período">
+    <span class="label">Período</span>
+    <button data-range="all" aria-pressed="true">Todos</button>
+    <button data-range="7d">7d</button>
+    <button data-range="14d">14d</button>
+    <button data-range="21d">21d</button>
+    <button data-range="30d">30d</button>
+    <button data-range="60d">60d</button>
+    <button data-range="90d">90d</button>
+    <button data-range="120d">120d</button>
+    <button data-range="150d">150d</button>
+    <button data-range="180d">180d</button>
+    <button data-range="custom">Personalizado</button>
+    <label class="periodo-vinculo" title="Quando um período está escolhido, o calendário mostra só esse período. Desmarque para o calendário usar a própria janela."><input type="checkbox" id="perCal" checked> calendário acompanha o período</label>
+  </div>
+  <div class="period-custom" id="periodCustom" hidden>
+    <label>Últimos <input type="number" id="perDias" min="1" step="1" value="5" inputmode="numeric"> dias</label>
+    <span>ou um intervalo:</span>
+    <label>de <input type="date" id="perDe"></label>
+    <label>até <input type="date" id="perAte"></label>
+  </div>
+  <p class="section-sub" id="periodoResumo"></p>
+
+  <div class="filters secoes" role="group" aria-label="Seções">
+    <span class="label">Seções</span>
+    <button type="button" id="secRecolher">Recolher todas</button>
+    <button type="button" id="secAbrir">Abrir todas</button>
+    <button type="button" id="secOrdenar" aria-pressed="false">Reordenar setores</button>
+    <button type="button" id="secRestaurar" hidden>Restaurar ordem</button>
+  </div>
+
+  <section class="card geral" data-sec="geral">
+    <h2>Geral</h2>
+    <p class="card-sub">os números principais do período escolhido acima</p>
+    <div class="kpis" id="kpiRow"></div>
+    <p class="card-sub" id="secNota">secundárias no mesmo período — as três primeiras somam a métrica principal; o cache lido fica de fora dela</p>
+    <div class="kpis" id="kpiSecRow"></div>
+  </section>
+
+  <section class="card" data-sec="insights">
+    <h2>Insights</h2>
+    <p class="card-sub">calculados sobre todo o histórico de dias fechados — atualizam sozinhos quando entra um dia novo</p>
+    <div class="insights" id="insights"></div>
+  </section>
+
+  <section class="card" data-sec="calendario">
+    <h2>Calendário de uso</h2>
+    <p class="card-sub">dias que rodaram e dias em branco — quanto mais forte o verde, mais tokens (<span class="mnome">sem cache lido</span>) naquele dia (sempre todo o histórico). Nos quadradinhos, passe o mouse para ver a data</p>
+    <div class="filters cal-view" role="group" aria-label="Forma do calendário">
+      <span class="label">Ver como</span>
+      <button data-calview="mes" aria-pressed="true">Calendário</button>
+      <button data-calview="quad">Quadradinhos (semanas)</button>
+    </div>
+    <div class="filters cal-opts" id="calJanela" role="group" aria-label="Quanto mostrar"><span class="label">Mostrar</span></div>
+    <div class="filters cal-start" role="group" aria-label="Primeiro dia da semana">
+      <span class="label">Semana começa</span>
+      <button data-calstart="seg" aria-pressed="true">Segunda</button>
+      <button data-calstart="dom">Domingo</button>
+    </div>
+    <p class="cal-resumo" id="calResumo"></p>
+    <div class="legend">
+      <span class="item">sem uso <span class="scale"><i style="background:var(--grid)"></i></span></span>
+      <span class="item">menos <span class="scale" id="calScale"></span> mais</span>
+      <span class="item"><span class="scale"><i style="background:var(--neon);opacity:.55;box-shadow:inset 0 0 0 1px var(--neon-edge)"></i></span> dia em aberto</span>
+    </div>
+    <div class="cal-months" id="calMonths"></div>
+  </section>
+
+  <section class="card" data-sec="consumo">
+    <h2>Consumo por dia ativo</h2>
+    <p class="card-sub">k tokens (<span class="mnome">sem cache lido</span>) em cada dia com uso — passe o mouse para ver as secundárias</p>
+    <div class="legend">
+      <span class="item"><span class="swatch" style="background:var(--series-weekday)"></span>Dia de semana</span>
+      <span class="item"><span class="swatch" style="background:var(--series-weekend)"></span>Fim de semana</span>
+      <span class="item"><span class="keyline" style="border-color:var(--text-primary)"></span>Média móvel 7d</span>
+      <span class="item" id="legendaParcial" hidden><span class="swatch" style="background:var(--series-weekday);opacity:.45"></span>Dia em aberto (parcial)</span>
+    </div>
+    <div class="chart-scroll"><svg id="dailyChart"></svg></div>
+  </section>
+
+  <section class="card" data-sec="mensal">
+    <h2>Total por mês</h2>
+    <p class="card-sub">soma dos dias ativos de cada mês, em k tokens</p>
+    <div class="chart-scroll"><svg id="monthChart"></svg></div>
+  </section>
+
+  <section class="card" data-sec="modelo">
+    <h2>Por modelo</h2>
+    <p class="card-sub" id="modeloSub"></p>
+    <div id="modeloBarras"></div>
+  </section>
+
+  <section class="card" data-sec="projeto">
+    <h2>Por projeto</h2>
+    <p class="card-sub" id="projetoSub"></p>
+    <div class="filters det-opts" role="group" aria-label="Opções dos projetos">
+      <button type="button" id="projOcultar" aria-pressed="false">Ocultar nomes dos projetos</button>
+    </div>
+    <div id="projetoBarras"></div>
+  </section>
+
+  <section class="card" data-sec="horario">
+    <h2>Horário de uso</h2>
+    <p class="card-sub" id="horarioSub"></p>
+    <div class="hm-scroll"><div class="hm" id="horarioMapa"></div></div>
+    <p class="cal-resumo" id="horarioResumo"></p>
+  </section>
+
+  <section class="card" data-sec="aparelho">
+    <h2>Por aparelho</h2>
+    <p class="card-sub" id="aparelhoSub"></p>
+    <div id="aparelhoBarras"></div>
+  </section>
+
+  <section class="card" data-sec="sequencias">
+    <h2>Sequências de uso contínuo</h2>
+    <p class="card-sub">dias seguidos com uso, sem nenhum dia em branco no meio (a partir de 2 dias)</p>
+    <div class="filters streak-sort" role="group" aria-label="Ordem das sequências">
+      <span class="label">Ver</span>
+      <button data-sort="recent" aria-pressed="true">Mais recentes</button>
+      <button data-sort="longest">Maiores</button>
+    </div>
+    <table class="scenarios">
+      <thead><tr><th>Início</th><th>Fim</th><th class="num">Dias</th><th class="num">Total</th><th class="num">Média/dia</th><th></th></tr></thead>
+      <tbody id="streakBody"></tbody>
+    </table>
+  </section>
+
+  <section class="card" data-sec="projecao">
+    <h2 id="projTitle">Projeção para 250M de tokens</h2>
+    <p class="card-sub" id="projSub">escolha a meta e a base do ritmo diário: a média de um período recente, ou um valor digitado</p>
+
+    <div class="filters proj-goal" role="group" aria-label="Meta de tokens">
+      <span class="label" id="goalRowLabel">Meta</span>
+      <!-- os botões de meta são gerados pelo script, em volta do total da contagem escolhida -->
+      <button data-goal="custom">Personalizada</button>
+    </div>
+
+    <div class="proj-custom" id="goalCustomRow" hidden>
+      <label for="goalCustomInput" id="goalCustomLabel">Meta personalizada</label>
+      <input type="number" id="goalCustomInput" min="0.001" step="1" value="250" inputmode="decimal">
+      <span class="unit">M tokens</span>
+    </div>
+
+    <div class="filters proj-basis" role="group" aria-label="Base da projeção">
+      <span class="label">Base</span>
+      <button data-basis="7">7d</button>
+      <button data-basis="14">14d</button>
+      <button data-basis="21">21d</button>
+      <button data-basis="30" aria-pressed="true">30d</button>
+      <button data-basis="60">60d</button>
+      <button data-basis="90">90d</button>
+      <button data-basis="120">120d</button>
+      <button data-basis="150">150d</button>
+      <button data-basis="180">180d</button>
+      <button data-basis="custom">Personalizado</button>
+    </div>
+
+    <div class="proj-custom" id="projCustomRow" hidden>
+      <label for="projCustomInput">Consumo diário fixo</label>
+      <input type="number" id="projCustomInput" min="1" step="1" value="2000" inputmode="numeric">
+      <span class="unit">k tokens/dia</span>
+    </div>
+
+    <div class="proj-hero">
+      <span class="n" id="projDays">—</span><span class="unit">dias</span>
+    </div>
+    <div class="proj-date" id="projDate"></div>
+    <div class="proj-rate-note" id="projRateNote"></div>
+    <div class="meter-track"><div class="meter-fill" id="meterFill"></div></div>
+    <div class="meter-caption">
+      <span id="meterNow"></span>
+      <span id="meterGoalLabel">meta: 75M</span>
+    </div>
+    <table class="scenarios">
+      <thead><tr><th>Base</th><th class="num">k/dia</th><th class="num">dias</th><th class="num">chega em</th></tr></thead>
+      <tbody id="scenarioBody"></tbody>
+    </table>
+  </section>
+
+  <section class="card" data-sec="acumulado">
+    <h2 id="acumTitulo">Acumulado até a meta</h2>
+    <p class="card-sub">total fechado ao longo do tempo, com a projeção no ritmo escolhido em “Projeção” — sempre sobre todo o histórico</p>
+    <div class="legend">
+      <span class="item"><span class="keyline" style="border-color:var(--series-weekday)"></span>Acumulado (dias fechados)</span>
+      <span class="item"><span class="keyline dashed" style="border-color:var(--series-weekday)"></span>Projeção</span>
+    </div>
+    <div class="chart-scroll"><svg id="cumChart"></svg></div>
+  </section>
+
+  <section class="card" data-sec="gastar">
+    <h2 id="gastarTitulo">Quanto por dia até a meta?</h2>
+    <p class="card-sub"><span id="calcFrase">para chegar à meta de</span> <strong id="calcGoalLabel">250M</strong> (a mesma escolhida em “Projeção”). Dia em aberto: <strong id="calcTodayLabel"></strong>.</p>
+
+    <div class="calc-grid">
+      <label class="calc-field"><span>Já gastei hoje (parcial)</span>
+        <span class="calc-input"><input type="number" id="calcPartial" min="0" step="1" value="0" inputmode="numeric"><i>k tokens</i></span></label>
+      <label class="calc-field"><span>Prazo: nos próximos</span>
+        <span class="calc-input"><input type="number" id="calcDays" min="1" step="1" value="30" inputmode="numeric"><i>dias, contando hoje</i></span></label>
+      <label class="calc-field"><span>ou até a data</span>
+        <span class="calc-input"><input type="date" id="calcDate"></span></label>
+    </div>
+    <p class="calc-warn" id="calcWarn" hidden></p>
+
+    <div class="calc-results" id="calcResults"></div>
+    <p class="calc-verdict" id="calcVerdict"></p>
+    <p class="calc-note" id="calcNote"></p>
+
+    <table class="scenarios">
+      <thead><tr><th>Prazo</th><th class="num">k/dia necessário</th><th class="num">× média 30d</th><th class="num">Data limite</th></tr></thead>
+      <tbody id="calcTable"></tbody>
+    </table>
+  </section>
+
+  <section class="card" data-sec="api">
+    <h2>API da Anthropic (separado)</h2>
+    <p class="card-sub" id="apiSub"></p>
+    <div class="kpis" id="apiTiles"></div>
+    <table class="scenarios">
+      <thead><tr><th>Modelo</th><th class="num">Entrada</th><th class="num">Saída</th><th class="num">Cache criado</th><th class="num">Cache lido</th><th class="num">Custo</th></tr></thead>
+      <tbody id="apiTabela"></tbody>
+    </table>
+  </section>
+
+  <details class="table-view">
+    <summary>Ver tabela com todos os dias</summary>
+    <div class="raw-scroll">
+      <table class="raw">
+        <thead><tr><th>Data</th><th>Dia</th><th><span class="mnome">sem cache lido</span> (k)</th><th>entrada</th><th>saída</th><th>cache criado</th><th>cache lido</th><th>sessões</th></tr></thead>
+        <tbody id="rawBody"></tbody>
+      </table>
+    </div>
+  </details>
+
+  <footer class="note">
+    Fonte: os transcripts locais do Claude Code (<code>~/.claude/projects</code>), lidos pelo script da skill
+    <code>claude-usage-dashboard</code>. O Claude Code só guarda o que rodou neste computador — o claude.ai e outros
+    aparelhos não aparecem aqui. Os dados ficam no seu disco; esta página não envia nada para lugar nenhum.
+    <strong>Contagem Claude Code (a padrão):</strong> entrada + saída de cada linha do transcript, sem cache (cada resposta do Claude
+    aparece em várias linhas, e todas contam). É uma reconstrução da contagem do painel de uso do Claude Code: num teste
+    de 89 dias de um único usuário o total ficou a cerca de 2% do painel (0,98×); dia a dia os valores podem variar mais
+    — trate como estimativa, não como cópia garantida. <strong>Contagem Alternativa:</strong> “sem cache lido” =
+    entrada + saída + cache criado, cada resposta uma vez; o cache lido (a conversa relida a cada resposta) fica só como
+    secundária. O Claude Code apaga transcripts antigos depois de um tempo, então o histórico começa no que ainda existia na
+    primeira vez que o script rodou; rodar de novo de vez em quando mantém os dias já registrados.
+    <span class="credito">{{CREDITO}}</span>
+  </footer>
+
+</div>
+
+<div class="tooltip" id="tooltip" role="tooltip"></div>
+
+<script src="dados/tokens-diarios.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---- dados -------------------------------------------------------
+  // window.TOKENS_DIARIOS é gerado pelo script da skill (embutido nesta página). k = métrica principal, em k tokens;
+  // as secundárias ficam em tokens inteiros.
+  if (!Array.isArray(window.TOKENS_DIARIOS) || !window.TOKENS_DIARIOS.length) {
+    document.querySelector(".wrap").innerHTML =
+      "<h1>Sem dados</h1><p>Esta página precisa dos dados diários. Peça ao Claude para montar o dashboard de consumo (skill <code>claude-usage-dashboard</code>) ou rode <code>node scripts/build-dashboard.js</code>.</p>";
+    return;
+  }
+  // Cada dia carrega as DUAS contagens em r.v; o modo escolhido no botão "Contagem" é copiado para o próprio r
+  // (k, entrada, saida, cacheCriado, cacheLido), e é isso que o resto da página lê.
+  //   antigo (PRINCIPAL): cada linha do transcript, sem eliminar repetições; métrica = entrada + saída, sem cache
+  //   atual  (AUXILIAR):  cada resposta uma vez; métrica = entrada + saída + cache criado ("sem cache lido")
+  // (os nomes internos "antigo"/"atual" vêm da origem do projeto: "antigo" = como o painel do Claude Code contava)
+  const RAW = window.TOKENS_DIARIOS.map(t => {
+    const date = new Date(t.data + "T00:00:00");
+    const dow = date.getDay(); // 0 dom .. 6 sab
+    const temLinha = t.linha_entrada != null && t.linha_saida != null;
+    return {
+      date, iso: t.data, weekend: (dow === 0 || dow === 6), parcial: !!t.parcial, sessoes: t.sessoes,
+      v: {
+        atual: { k: Math.round(t.sem_cache_lido / 1000), entrada: t.entrada, saida: t.saida, cacheCriado: t.cache_criado, cacheLido: t.cache_lido },
+        antigo: temLinha ? { k: Math.round((t.linha_entrada + t.linha_saida) / 1000), entrada: t.linha_entrada, saida: t.linha_saida,
+          cacheCriado: t.linha_cache_criado, cacheLido: t.linha_cache_lido } : null
+      }
+    };
+  });
+  const TEM_ANTIGO = RAW.every(r => r.v.antigo);   // sem as colunas por linha nos dados, só a contagem auxiliar existe
+  const TEXTOS = {
+    antigo: {
+      nome: "entrada + saída", def: "(entrada + saída de cada linha do transcript, sem cache — como o painel do Claude Code provavelmente contava)",
+      sec: "secundárias no mesmo período, contadas da mesma forma — só entrada + saída formam a métrica principal; cache criado e cache lido ficam de fora",
+      nota: "Contagem Claude Code: cada linha do transcript conta, mesmo repetindo a mesma resposta; sem cache. É uma reconstrução da contagem do painel de uso do Claude Code — uma estimativa, não uma cópia garantida."
+    },
+    atual: {
+      nome: "sem cache lido", def: "(entrada + saída + cache criado, cada resposta contada uma vez)",
+      sec: "secundárias no mesmo período — as três primeiras somam a métrica principal; o cache lido fica de fora dela",
+      nota: "Contagem Alternativa: cada resposta conta uma vez e o cache criado entra na conta — mostra o volume de contexto processado, bem maior que a outra contagem."
+    }
+  };
+  let modo = TEM_ANTIGO ? "antigo" : "atual";
+  try { const m = localStorage.getItem("contagem-dashboard"); if (m === "atual" || (m === "antigo" && TEM_ANTIGO)) modo = m; } catch (e) { /* sem armazenamento: começa na principal */ }
+  RAW.forEach(r => Object.assign(r, r.v[modo]));
+
+  // ---- objetivo: o painel pode ser lido como "atingir uma meta" ou "ficar dentro de um limite" ----------------
+  // A conta é a mesma (o que falta ou cabe ÷ dias do prazo); muda o jeito de dizer. Fica salvo neste navegador.
+  let objetivo = "atingir";
+  try { const o = localStorage.getItem("objetivo-dashboard"); if (o === "atingir" || o === "limite") objetivo = o; } catch (e) { /* sem armazenamento */ }
+  const OBJ = {
+    atingir: {
+      Alvo: "Meta", personalizada: "Meta personalizada",
+      projSub: "escolha a meta e a base do ritmo diário: a média de um período recente, ou um valor digitado",
+      kpi: g => "Progresso até " + g,
+      projTitulo: g => "Projeção para " + g + " de tokens",
+      meter: g => "meta: " + g,
+      projFeito: (data, acima) => "meta atingida em " + data + " · hoje " + acima + " k acima",
+      projFuturo: (data, falta) => "chega lá em " + data + " · faltam " + falta + " k tokens",
+      acumTitulo: "Acumulado até a meta", linhaGrafico: g => "meta " + g,
+      gastarTitulo: "Quanto por dia até a meta?", calcFrase: "para chegar à meta de",
+      tAinda: "Ainda falta", tPorDia: "Por dia", tHoje: "Hoje ainda", tTudo: "Se for tudo hoje"
+    },
+    limite: {
+      Alvo: "Limite", personalizada: "Limite personalizado",
+      projSub: "escolha o limite e a base do ritmo diário: a média de um período recente, ou um valor digitado",
+      kpi: g => "Uso do limite de " + g,
+      projTitulo: g => "Quando chego ao limite de " + g + "?",
+      meter: g => "limite: " + g,
+      projFeito: (data, acima) => "limite ultrapassado em " + data + " · hoje " + acima + " k acima",
+      projFuturo: (data, falta) => "no ritmo escolhido, chega ao limite em " + data + " · restam " + falta + " k tokens",
+      acumTitulo: "Acumulado até o limite", linhaGrafico: g => "limite " + g,
+      gastarTitulo: "Quanto ainda posso gastar?", calcFrase: "para não passar do limite de",
+      tAinda: "Ainda posso gastar", tPorDia: "No máximo por dia", tHoje: "Hoje ainda posso", tTudo: "Se eu gastar tudo hoje"
+    }
+  };
+  // tokens inteiros -> "12,3M" / "456,7k" / "78"
+  const fmtTok = n => n >= 1e9 ? (n / 1e9).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "B"
+    : n >= 1e6 ? (n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "M"
+    : n >= 1e3 ? (n / 1e3).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "k"
+    : String(n);
+
+  // Dia em aberto (parcial=1): os tokens já contam no total e no acumulado, mas ficam
+  // fora de toda média/ritmo — um dia pela metade dividido por um dia inteiro mentiria
+  // para baixo. Vira dia fechado quando o dia vira e o script roda de novo.
+  const CLOSED = RAW.filter(r => !r.parcial);
+  const partialRow = RAW.find(r => r.parcial) || null;
+
+  // Com menos de 3 dias fechados, médias, sequências, insights e projeções não dizem nada: mostra só o que existe.
+  if (CLOSED.length < 3) {
+    const linhas = RAW.map(r => `<tr><td>${r.iso}${r.parcial ? " (em aberto)" : ""}</td><td class="num">${r.k.toLocaleString("pt-BR")} k</td>` +
+      `<td class="num">${fmtTok(r.entrada)}</td><td class="num">${fmtTok(r.saida)}</td><td class="num">${fmtTok(r.cacheCriado)}</td><td class="num">${fmtTok(r.cacheLido)}</td></tr>`).join("");
+    document.querySelector(".wrap").innerHTML =
+      `<header class="top"><div><h1>Consumo de tokens — Claude</h1><p>Ainda há poucos dias registrados (${RAW.length}). Os gráficos, médias e projeções aparecem quando houver pelo menos 3 dias fechados — rode o script de novo daqui a alguns dias de uso.</p></div></header>` +
+      `<section class="card"><h2>O que já existe</h2><p class="card-sub">k tokens (${TEXTOS[modo].nome}) e as secundárias de cada dia</p>` +
+      `<table class="raw"><thead><tr><th>Data</th><th>${TEXTOS[modo].nome} (k)</th><th>entrada</th><th>saída</th><th>cache criado</th><th>cache lido</th></tr></thead><tbody>${linhas}</tbody></table></section>`;
+    return;
+  }
+
+  const DIAS_PT = ["dom","seg","ter","qua","qui","sex","sáb"];
+  const MESES_PT = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+  const fmtK = n => n.toLocaleString("pt-BR");
+  const fmtDate = d => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;
+  const fmtDateFull = d => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  // km = meta em k tokens; de 1B (1.000.000 k) para cima o rótulo vira "1B", "1,25B"…
+  const fmtGoalLabel = km => km >= 1e6
+    ? (km/1e6).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "B"
+    : (km/1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "M";
+  const isoOf = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const addDays = (d, n) => { const c = new Date(d); c.setDate(c.getDate() + n); return c; };
+  const daysBetween = (a, b) => Math.round((b - a) / 86400000);
+  const sumK = rows => rows.reduce((a, r) => a + r.k, 0);
+
+  // ---- escalas que se adaptam ao uso de cada pessoa -------------------------------
+  // Metas, patamares dos Insights e o ritmo padrão saem dos dados reais, não de números fixos:
+  // quem gasta 200 k por dia e quem gasta 5 M por dia precisam de réguas diferentes.
+  const SNAP = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10];
+  const snapNice = x => {   // arredonda para um número "redondo" (1, 1,5, 2, 3, 5, 7,5…× potência de 10)
+    if (!(x > 0)) return 1;
+    const e = Math.pow(10, Math.floor(Math.log10(x))), m = x / e;
+    let best = SNAP[0];
+    SNAP.forEach(s => { if (Math.abs(s - m) < Math.abs(best - m)) best = s; });
+    return Math.max(1, Math.round(best * e));
+  };
+  const GOAL_STEPS_M = [0.1, 0.25, 0.5, 1, 2, 3, 5, 7.5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 125, 150, 200, 250, 300, 400, 500,
+    600, 750, 1000, 1250, 1500, 2000, 3000, 4000, 5000, 7500, 10000, 15000, 20000, 50000];   // em M tokens
+  // meta padrão: o primeiro degrau com folga (25%) acima do total atual da contagem escolhida
+  const goalDefaultM = () => {
+    const i = GOAL_STEPS_M.findIndex(v => v * 1000 > sumK(RAW) * 1.25);
+    return GOAL_STEPS_M[i < 0 ? GOAL_STEPS_M.length - 1 : i];
+  };
+
+  // k por data e média móvel de 7 dias corridos (dia sem registro conta como 0)
+  const byIso = new Map();
+  function calcMedias() {   // refeito toda vez que o botão "Contagem" troca os valores
+    byIso.clear();
+    RAW.forEach(r => byIso.set(r.iso, r.k));
+    RAW.forEach(r => {
+      let s = 0;
+      for (let i = 0; i < 7; i++) s += byIso.get(isoOf(addDays(r.date, -i))) || 0;
+      r.ma7 = s / 7;
+    });
+  }
+  calcMedias();
+
+  document.getElementById("lastDateLabel").textContent = fmtDateFull(RAW[RAW.length - 1].date);
+
+  // ---- filtro de período --------------------------------------------
+  let range = "all";   // "all" | "7d"… | "custom" (últimos N dias ou um intervalo de datas)
+  const periodoCustom = { modo: "dias", dias: 5, de: null, ate: null };
+  const lastDate = RAW[RAW.length - 1].date;          // pode ser o dia em aberto
+  const lastClosed = CLOSED[CLOSED.length - 1].date;  // âncora de tudo que é média/ritmo
+  const firstDate = RAW[0].date;
+  // período escolhido como intervalo de datas (inclusive); null = todo o histórico. "Últimos N dias" termina no último dia registrado.
+  function periodoAtual() {
+    if (range === "all") return null;
+    if (range === "custom" && periodoCustom.modo === "datas") {
+      let ini = new Date(periodoCustom.de + "T00:00:00"), fim = new Date(periodoCustom.ate + "T00:00:00");
+      if (ini > fim) { const t = ini; ini = fim; fim = t; }
+      return { ini, fim };
+    }
+    const n = range === "custom" ? Math.max(1, periodoCustom.dias | 0) : parseInt(range, 10);
+    return { ini: addDays(lastDate, -(n - 1)), fim: lastDate };
+  }
+  function filtered() {
+    const p = periodoAtual();
+    return p ? RAW.filter(r => r.date >= p.ini && r.date <= p.fim) : RAW;
+  }
+
+  // ---- KPIs -----------------------------------------------------------
+  function renderKPIs() {
+    esconderInfo();   // os cartões são recriados: uma explicação aberta ficaria sem dono
+    const rows = filtered();
+    if (!rows.length) {   // um intervalo do passado pode não ter nenhum dia com uso
+      document.getElementById("kpiSecRow").innerHTML = "";
+      const vazio = document.getElementById("kpiRow");
+      vazio.innerHTML = "";
+      const msg = document.createElement("p");
+      msg.className = "card-sub"; msg.style.gridColumn = "1 / -1";
+      msg.textContent = "Nenhum dia com uso neste período — escolha outro intervalo.";
+      vazio.appendChild(msg);
+      return;
+    }
+    const total = rows.reduce((a, r) => a + r.k, 0);
+    // médias só sobre dias fechados: o dia em aberto ainda não rendeu o que vai render
+    const fechadas = rows.filter(r => !r.parcial);
+    const avg = fechadas.length ? sumK(fechadas) / fechadas.length : 0;
+    const sorted = [...fechadas].sort((a, b) => a.k - b.k);
+    const median = fechadas.length ? sorted[Math.floor(fechadas.length / 2)].k : 0;
+    const max = rows.reduce((a, r) => (r.k > a.k ? r : a), rows[0]);
+    const temParcial = rows.some(r => r.parcial);
+    // progresso até a meta é sempre acumulado (todo o histórico), não filtrado pelo período acima
+    const allTimeTotal = RAW.reduce((a, r) => a + r.k, 0);
+
+    const tiles = [
+      { label: "Total no período", value: fmtK(total) + " k",
+        sub: (total/1000).toLocaleString("pt-BR",{maximumFractionDigits:1}) + " M tokens" + (temParcial ? " · inclui hoje em aberto" : "") },
+      { label: "Dias ativos", value: rows.length, sub: range === "all" ? "desde " + fmtDate(rows[0].date) : "no período" },
+      { label: "Média por dia fechado", value: fmtK(Math.round(avg)) + " k", sub: "mediana " + fmtK(median) + " k" + (temParcial ? " · fora o dia em aberto" : "") },
+      { label: "Maior dia", value: fmtK(max.k) + " k", sub: fmtDateFull(max.date) + " · " + DIAS_PT[max.date.getDay()] },
+      { label: OBJ[objetivo].kpi(fmtGoalLabel(goal)), value: (allTimeTotal/goal*100).toLocaleString("pt-BR",{maximumFractionDigits:1}) + "%", sub: fmtK(Math.max(0, goal-allTimeTotal)) + " k restantes", subGood: false },
+    ];
+    const kpiRow = document.getElementById("kpiRow");
+    kpiRow.innerHTML = "";
+    tiles.forEach(t => {
+      const div = document.createElement("div");
+      div.className = "tile";
+      const l = document.createElement("div"); l.className = "label"; l.textContent = t.label;
+      const v = document.createElement("div"); v.className = "value"; v.textContent = t.value;
+      const s = document.createElement("div"); s.className = "sub" + (t.subGood ? " good" : ""); s.textContent = t.sub;
+      div.append(l, v, s);
+      attachInfo(div, t.label);
+      kpiRow.appendChild(div);
+    });
+
+    // secundárias: soma do período em tokens, com a média por dia fechado embaixo
+    const soma = campo => rows.reduce((a, r) => a + r[campo], 0);
+    const mediaDia = campo => fechadas.length ? fechadas.reduce((a, r) => a + r[campo], 0) / fechadas.length : 0;
+    const secTiles = [
+      { label: "Entrada", campo: "entrada" },
+      { label: "Saída", campo: "saida" },
+      { label: "Cache criado", campo: "cacheCriado" },
+      { label: "Cache lido", campo: "cacheLido" },
+    ].map(t => ({ label: t.label, value: fmtTok(soma(t.campo)), sub: fmtTok(Math.round(mediaDia(t.campo))) + "/dia em média" }));
+    const comCache = soma("entrada") + soma("saida") + soma("cacheCriado") + soma("cacheLido");
+    secTiles.push({ label: "Total com cache lido", value: fmtTok(comCache),
+      sub: "cache lido = " + Math.round(soma("cacheLido") / comCache * 100) + "% do total" });
+    const secRow = document.getElementById("kpiSecRow");
+    secRow.innerHTML = "";
+    secTiles.forEach(t => {
+      const div = document.createElement("div"); div.className = "tile";
+      const l = document.createElement("div"); l.className = "label"; l.textContent = t.label;
+      const v = document.createElement("div"); v.className = "value"; v.textContent = t.value;
+      const s = document.createElement("div"); s.className = "sub"; s.textContent = t.sub;
+      div.append(l, v, s);
+      attachInfo(div, t.label);
+      secRow.appendChild(div);
+    });
+  }
+
+  // ---- tooltip ---------------------------------------------------------
+  const tooltipEl = document.getElementById("tooltip");
+  function showTooltip(x, y, rows) {
+    tooltipEl.innerHTML = "";
+    rows.forEach(r => {
+      if (r.heading) {
+        const h = document.createElement("div"); h.className = "t-date"; h.textContent = r.heading;
+        tooltipEl.appendChild(h);
+      } else {
+        const row = document.createElement("div"); row.className = "t-row";
+        const kind = document.createElement("span"); kind.className = "t-kind"; kind.textContent = r.kind;
+        const val = document.createElement("span"); val.className = "t-val"; val.textContent = r.val;
+        row.append(kind, val);
+        tooltipEl.appendChild(row);
+      }
+    });
+    tooltipEl.style.left = x + "px";
+    tooltipEl.style.top = y + "px";
+    tooltipEl.classList.add("show");
+  }
+  function hideTooltip() { tooltipEl.classList.remove("show"); }
+
+  // ---- daily bar chart ---------------------------------------------
+  const NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  function renderDaily() {
+    const rows = filtered();
+    const svg = document.getElementById("dailyChart");
+    svg.innerHTML = "";
+    if (!rows.length) {
+      svg.setAttribute("width", 320); svg.setAttribute("height", 48); svg.setAttribute("viewBox", "0 0 320 48");
+      const t = el("text", { x: 0, y: 28, class: "axis-label" });
+      t.textContent = "Nenhum dia com uso neste período.";
+      svg.appendChild(t);
+      return;
+    }
+
+    const barW = 16, gap = 8, padL = 44, padR = 12, padT = 14, padB = 34;
+    const plotH = 220;
+    const width = padL + padR + rows.length * (barW + gap) - gap;
+    const height = padT + plotH + padB;
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+    const maxVal = Math.max(...rows.map(r => r.k));
+    const niceMax = Math.ceil(maxVal / 1000) * 1000 || 1000;
+    const yScale = v => plotH - (v / niceMax) * plotH;
+
+    // gridlines + y ticks
+    const ticks = 4;
+    for (let i = 0; i <= ticks; i++) {
+      const v = Math.round(niceMax * i / ticks);
+      const y = padT + yScale(v);
+      svg.appendChild(el("line", { x1: padL, x2: width - padR, y1: y, y2: y, class: "grid-line" }));
+      const t = el("text", { x: padL - 8, y: y + 3, "text-anchor": "end", class: "axis-label" });
+      t.textContent = fmtK(v);
+      svg.appendChild(t);
+    }
+    // baseline
+    svg.appendChild(el("line", { x1: padL, x2: width - padR, y1: padT + plotH, y2: padT + plotH, class: "baseline" }));
+
+    // bars + month ticks
+    let lastMonth = null;
+    rows.forEach((r, i) => {
+      const x = padL + i * (barW + gap);
+      const h = (r.k / niceMax) * plotH;
+      const y = padT + plotH - h;
+      const bar = el("rect", {
+        x, y, width: barW, height: Math.max(h, 1.5),
+        rx: 3, ry: 3,
+        fill: r.weekend ? "var(--series-weekend)" : "var(--series-weekday)",
+        class: "bar" + (r.parcial ? " parcial" : "")
+      });
+      if (r.parcial) {
+        const pl = el("text", { x: x + barW / 2, y: y - 6, "text-anchor": "middle", class: "parcial-label" });
+        pl.textContent = "aberto";
+        svg.appendChild(pl);
+      }
+      bar.addEventListener("pointerenter", ev => tip(ev));
+      bar.addEventListener("pointermove", ev => tip(ev));
+      bar.addEventListener("pointerleave", hideTooltip);
+      function tip(ev) {
+        showTooltip(ev.clientX, ev.clientY, [
+          { heading: fmtDateFull(r.date) + " · " + DIAS_PT[r.date.getDay()] },
+          { kind: TEXTOS[modo].nome, val: fmtK(r.k) + " k" },
+          { kind: r.parcial ? "dia em aberto" : "média móvel 7d", val: r.parcial ? "parcial" : fmtK(Math.round(r.ma7)) + " k" },
+          { kind: "entrada", val: fmtTok(r.entrada) },
+          { kind: "saída", val: fmtTok(r.saida) },
+          { kind: "cache criado", val: fmtTok(r.cacheCriado) },
+          { kind: "cache lido", val: fmtTok(r.cacheLido) },
+          { kind: "sessões", val: String(r.sessoes) }
+        ]);
+      }
+      svg.appendChild(bar);
+
+      const m = r.date.getMonth();
+      if (m !== lastMonth) {
+        lastMonth = m;
+        const label = el("text", { x: x, y: padT + plotH + 18, class: "month-tick" });
+        label.textContent = MESES_PT[m] + (r.date.getFullYear() !== lastDate.getFullYear() ? "/" + String(r.date.getFullYear()).slice(2) : "");
+        svg.appendChild(label);
+        svg.appendChild(el("line", { x1: x - gap/2, x2: x - gap/2, y1: padT, y2: padT + plotH, class: "grid-line" }));
+      }
+    });
+
+    // média móvel 7d por cima das barras (nunca passa do maior dia, então cabe na escala)
+    const maPts = rows.map((r, i) => [padL + i * (barW + gap) + barW / 2, padT + plotH - (r.ma7 / niceMax) * plotH]);
+    if (maPts.length > 1) {
+      svg.appendChild(el("polyline", { class: "ma-line", points: maPts.map(p => p.join(",")).join(" ") }));
+    }
+    const endPt = maPts[maPts.length - 1];
+    svg.appendChild(el("circle", { class: "ma-dot", cx: endPt[0], cy: endPt[1], r: 4 }));
+  }
+
+  // ---- monthly bar chart ---------------------------------------------
+  function renderMonthly() {
+    const rows = filtered();
+    const byMonth = {};
+    rows.forEach(r => {
+      const key = r.date.getFullYear() + "-" + String(r.date.getMonth()).padStart(2, "0");
+      byMonth[key] = (byMonth[key] || 0) + r.k;
+    });
+    const months = Object.keys(byMonth).sort().map(key => {
+      const [y, m] = key.split("-").map(Number);
+      return { label: MESES_PT[m] + "/" + String(y).slice(2), total: byMonth[key] };
+    });
+
+    const svg = document.getElementById("monthChart");
+    svg.innerHTML = "";
+    if (!months.length) {
+      svg.setAttribute("width", 320); svg.setAttribute("height", 48); svg.setAttribute("viewBox", "0 0 320 48");
+      const t = el("text", { x: 0, y: 28, class: "axis-label" });
+      t.textContent = "Nenhum dia com uso neste período.";
+      svg.appendChild(t);
+      return;
+    }
+    const barW = 64, gap = 28, padL = 52, padR = 16, padT = 18, padB = 30;
+    const plotH = 180;
+    const width = padL + padR + months.length * (barW + gap) - gap;
+    const height = padT + plotH + padB;
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+    const maxVal = Math.max(...months.map(m => m.total));
+    const niceMax = Math.ceil(maxVal / 2000) * 2000 || 2000;
+    const ticks = 4;
+    for (let i = 0; i <= ticks; i++) {
+      const v = Math.round(niceMax * i / ticks);
+      const y = padT + plotH - (v / niceMax) * plotH;
+      svg.appendChild(el("line", { x1: padL, x2: width - padR, y1: y, y2: y, class: "grid-line" }));
+      const t = el("text", { x: padL - 8, y: y + 3, "text-anchor": "end", class: "axis-label" });
+      t.textContent = fmtK(v);
+      svg.appendChild(t);
+    }
+    svg.appendChild(el("line", { x1: padL, x2: width - padR, y1: padT + plotH, y2: padT + plotH, class: "baseline" }));
+
+    months.forEach((m, i) => {
+      const x = padL + i * (barW + gap);
+      const h = (m.total / niceMax) * plotH;
+      const y = padT + plotH - h;
+      const bar = el("rect", { x, y, width: barW, height: Math.max(h, 1.5), rx: 4, ry: 4, fill: "var(--seq-450)", class: "bar" });
+      bar.addEventListener("pointerenter", ev => tip(ev));
+      bar.addEventListener("pointermove", ev => tip(ev));
+      bar.addEventListener("pointerleave", hideTooltip);
+      function tip(ev) {
+        showTooltip(ev.clientX, ev.clientY, [{ heading: m.label }, { kind: "total", val: fmtK(m.total) + " k" }]);
+      }
+      svg.appendChild(bar);
+
+      const valLabel = el("text", { x: x + barW/2, y: y - 6, "text-anchor": "middle", class: "axis-label" });
+      valLabel.setAttribute("style", "font-weight:600; fill: var(--text-secondary);");
+      valLabel.textContent = fmtK(m.total);
+      svg.appendChild(valLabel);
+
+      const label = el("text", { x: x + barW/2, y: padT + plotH + 18, "text-anchor": "middle", class: "month-tick" });
+      label.textContent = m.label;
+      svg.appendChild(label);
+    });
+  }
+
+  // ---- projeção ---------------------------------------------------------
+  // A base do ritmo diário é escolhida pelo usuário: a média de uma janela
+  // de calendário recente (7/14/21/30/60/90 dias corridos, dias sem uso
+  // contam como 0 — é "o que eu consumi nesse período", não só nos dias
+  // em que usei), ou um valor fixo digitado. A projeção sempre soma esse
+  // ritmo todo santo dia daqui pra frente, inclusive fins de semana.
+  let basis = "30";
+  let customRate = 1;     // ritmo digitado (k/dia); o padrão sai da média dos dados (chooseRateForModo)
+  let goal = 0;           // meta, em k tokens; definida em chooseGoalForModo
+  let customGoalM = 1;    // meta personalizada, em M tokens
+  let projRate = 0;       // ritmo (k/dia) em uso na projeção; o gráfico acumulado reaproveita
+
+  // Janela ancorada no último dia FECHADO. Se a janela pedida for maior que a série,
+  // divide pelos dias que existem de verdade — senão os dias anteriores ao primeiro registro
+  // entrariam como zero e puxariam a média para baixo.
+  function windowStats(days) {
+    const span = daysBetween(firstDate, lastClosed) + 1;
+    const eff = Math.min(days, span);
+    const cutoff = addDays(lastClosed, -(eff - 1));
+    const rows = CLOSED.filter(r => r.date >= cutoff);
+    const sum = rows.reduce((a, r) => a + r.k, 0);
+    return { days, eff, truncado: eff < days, ativos: rows.length, sum, rate: sum / eff };
+  }
+
+  function daysToGoal(total, rate) {
+    if (total >= goal) {
+      // meta já batida: a data é a do dia em que o acumulado cruzou, não a do último registro
+      let acc = 0, cross = lastDate;
+      for (const r of RAW) { acc += r.k; if (acc >= goal) { cross = r.date; break; } }
+      return { days: 0, date: cross, done: true, over: total - goal };
+    }
+    if (!(rate > 0)) return { days: Infinity, date: null };
+    let acc = total, n = 0;
+    let d = new Date(lastDate); d.setDate(d.getDate() + 1);
+    while (acc < goal && n < 20000) {
+      acc += rate;
+      d.setDate(d.getDate() + 1);
+      n++;
+    }
+    return { days: n, date: new Date(d.getTime() - 86400000) };
+  }
+
+  function renderProjection() {
+    const total = RAW.reduce((a, r) => a + r.k, 0);
+    const falta = Math.max(0, goal - total);
+    document.getElementById("projTitle").textContent = OBJ[objetivo].projTitulo(fmtGoalLabel(goal));
+    document.getElementById("meterGoalLabel").textContent = OBJ[objetivo].meter(fmtGoalLabel(goal));
+    const presets = [7, 14, 21, 30, 60, 90, 120, 150, 180].map(n => ({ key: String(n), ...windowStats(n) }));
+
+    let rate, rateNote;
+    if (basis === "custom") {
+      rate = customRate;
+      rateNote = rate > 0
+        ? fmtK(Math.round(rate)) + " k/dia digitados à mão, todo dia"
+        : "digite um valor de k tokens/dia acima";
+    } else {
+      const w = presets.find(p => p.key === basis);
+      rate = w.rate;
+      rateNote = fmtK(Math.round(rate)) + " k/dia · média dos últimos " + w.eff +
+        " dias corridos (" + w.ativos + " deles com uso)" +
+        (w.truncado ? ` — a série só tem ${w.eff} dias, menos que os ${w.days} pedidos` : "") +
+        (partialRow ? " · fora o dia em aberto" : "");
+    }
+
+    const r = daysToGoal(total, rate);
+    projRate = rate;
+    document.getElementById("projDays").textContent = Number.isFinite(r.days) ? r.days : "—";
+    document.getElementById("projDate").textContent = r.done
+      ? OBJ[objetivo].projFeito(fmtDateFull(r.date), fmtK(r.over))
+      : Number.isFinite(r.days)
+        ? OBJ[objetivo].projFuturo(fmtDateFull(r.date), fmtK(falta))
+        : (objetivo === "limite" ? "restam " : "faltam ") + fmtK(falta) + " k tokens";
+    document.getElementById("projRateNote").textContent = rateNote;
+    document.getElementById("meterFill").style.width = Math.min(100, total / goal * 100) + "%";
+    document.getElementById("meterNow").textContent = fmtK(total) + " k (" + (total / goal * 100).toFixed(1) + "%)";
+
+    const tbody = document.getElementById("scenarioBody");
+    tbody.innerHTML = "";
+    presets.forEach(p => {
+      const pr = daysToGoal(total, p.rate);
+      const tr = document.createElement("tr");
+      if (basis === p.key) tr.className = "selected";
+      const tdLabel = document.createElement("td");
+      tdLabel.textContent = "Últimos " + p.days + "d" + (p.truncado ? ` (só ${p.eff} d de série)` : "");
+      const tdK = document.createElement("td"); tdK.className = "num"; tdK.textContent = fmtK(Math.round(p.rate)) + " k";
+      const tdDays = document.createElement("td"); tdDays.className = "num"; tdDays.textContent = pr.days;
+      const tdDate = document.createElement("td"); tdDate.className = "num"; tdDate.textContent = fmtDateFull(pr.date);
+      tr.append(tdLabel, tdK, tdDays, tdDate);
+      tbody.appendChild(tr);
+    });
+    if (basis === "custom") {
+      const tr = document.createElement("tr"); tr.className = "selected";
+      const tdLabel = document.createElement("td"); tdLabel.textContent = "Personalizado";
+      const tdK = document.createElement("td"); tdK.className = "num"; tdK.textContent = rate > 0 ? fmtK(Math.round(rate)) + " k" : "—";
+      const tdDays = document.createElement("td"); tdDays.className = "num"; tdDays.textContent = Number.isFinite(r.days) ? r.days : "—";
+      const tdDate = document.createElement("td"); tdDate.className = "num"; tdDate.textContent = Number.isFinite(r.days) ? fmtDateFull(r.date) : "—";
+      tr.append(tdLabel, tdK, tdDays, tdDate);
+      tbody.appendChild(tr);
+    }
+
+    renderCumulative();
+    renderCalc();
+  }
+
+  // ---- sequências de uso contínuo -----------------------------------------
+  let runs = [], longestRun = 0, currentRun = null;
+  function calcRuns() {   // os dias das sequências não mudam com a contagem, mas os totais sim
+    runs = [];
+    RAW.forEach(r => {
+      const cur = runs[runs.length - 1];
+      if (cur && daysBetween(cur.end, r.date) === 1) { cur.end = r.date; cur.days++; cur.total += r.k; }
+      else runs.push({ start: r.date, end: r.date, days: 1, total: r.k });
+    });
+    longestRun = Math.max(...runs.map(s => s.days));
+    currentRun = runs[runs.length - 1].end.getTime() === lastDate.getTime() ? runs[runs.length - 1] : null;
+  }
+  calcRuns();
+  let streakSort = "recent";
+
+  function renderStreaks() {
+    const list = runs.filter(s => s.days >= 2);
+    list.sort(streakSort === "recent"
+      ? (a, b) => b.end - a.end
+      : (a, b) => b.days - a.days || b.end - a.end);
+    const tbody = document.getElementById("streakBody");
+    tbody.innerHTML = "";
+    list.slice(0, 8).forEach(s => {
+      const tr = document.createElement("tr");
+      if (s === currentRun) tr.className = "selected";
+      const cells = [
+        fmtDateFull(s.start), fmtDateFull(s.end),
+        s.days, fmtK(s.total) + " k", fmtK(Math.round(s.total / s.days)) + " k",
+        [s === currentRun ? "atual" : "", s.days === longestRun ? "maior" : ""].filter(Boolean).join(" · ")
+      ];
+      cells.forEach((c, i) => {
+        const td = document.createElement("td");
+        if (i >= 2 && i <= 4) td.className = "num";
+        td.textContent = c;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ---- insights -------------------------------------------------------------
+  const MESES_FULL = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+  const pct = (x, signed) => { const v = Math.round(x * 100); return (signed && v > 0 ? "+" : "") + v.toLocaleString("pt-BR") + "%"; };
+  const r0 = n => fmtK(Math.round(n));
+
+  function renderInsights() {
+    const items = [];
+    const total = sumK(CLOSED);   // só dias fechados: o dia em aberto ainda não rendeu o que vai render
+    const cutoff30 = addDays(lastClosed, -29);
+    const last30 = CLOSED.filter(r => r.date >= cutoff30);
+
+    // tendência semanal: blocos de 7 dias corridos terminando no último dia fechado
+    const blocks = [];
+    for (let i = 0; i < 8; i++) {
+      const end = addDays(lastClosed, -7 * i), start = addDays(lastClosed, -7 * i - 6);
+      if (start < firstDate) break;
+      blocks.push(sumK(CLOSED.filter(r => r.date >= start && r.date <= end)) / 7);
+    }
+    if (blocks.length >= 2 && blocks[1] > 0) {
+      const change = blocks[0] / blocks[1] - 1;
+      let headline;
+      if (change <= -0.1) {
+        let n = 0; while (n + 1 < blocks.length && blocks[n] < blocks[n + 1]) n++;
+        headline = n >= 2 ? `Ritmo semanal caiu ${n} vezes seguidas` : "Ritmo semanal caiu vs. a semana anterior";
+      } else if (change >= 0.1) {
+        let n = 0; while (n + 1 < blocks.length && blocks[n] > blocks[n + 1]) n++;
+        headline = n >= 2 ? `Ritmo semanal subiu ${n} vezes seguidas` : "Ritmo semanal subiu vs. a semana anterior";
+      } else headline = "Ritmo semanal estável";
+      const peak = Math.max(...blocks), peakIdx = blocks.indexOf(peak);
+      let detail = `${r0(blocks[0])} k/dia nos últimos 7d · ${r0(blocks[1])} k/dia na semana anterior (${pct(change, true)})`;
+      if (peakIdx > 0) detail += ` · pico: ${r0(peak)} k/dia há ${peakIdx} semana${peakIdx > 1 ? "s" : ""}`;
+      items.push({ tag: "Tendência", headline, detail });
+    }
+
+    // sequência atual
+    // (sempre presente: se a sequência quebrar, o card muda de texto e a grade não desloca)
+    if (currentRun) {
+      items.push({
+        tag: "Sequência atual",
+        headline: `${currentRun.days} dias seguidos com uso`,
+        detail: `desde ${fmtDate(currentRun.start)}` + (currentRun.days === longestRun ? " · a maior sequência registrada" : ` · a maior foi de ${longestRun} dias`)
+      });
+    } else {
+      const lastRun = runs[runs.length - 1];
+      items.push({
+        tag: "Sequência atual",
+        headline: "Sem sequência ativa",
+        detail: `a última teve ${lastRun.days} dias e terminou em ${fmtDate(lastRun.end)} · a maior foi de ${longestRun} dias`
+      });
+    }
+
+    // ciclo semanal (seg–dom por dia de calendário; o reset do limite semanal do plano pode cair em outro dia/hora)
+    const mondayOf = d => addDays(d, -((d.getDay() + 6) % 7));
+    const cycTotals = new Map();
+    RAW.forEach(r => { const key = isoOf(mondayOf(r.date)); cycTotals.set(key, (cycTotals.get(key) || 0) + r.k); });
+    const curStart = mondayOf(partialRow ? partialRow.date : addDays(lastClosed, 1));
+    const done = [];   // ciclos completos, em ordem cronológica
+    for (let s = mondayOf(firstDate); s < curStart; s = addDays(s, 7)) done.push({ start: s, total: cycTotals.get(isoOf(s)) || 0 });
+    if (done.length >= 2) {
+      const n = done.length, a = done[n - 1].total, b = done[n - 2].total;
+      let inc = 0, dec = 0;
+      for (let i = n - 1; i > 0 && done[i].total > done[i - 1].total; i--) inc++;
+      for (let i = n - 1; i > 0 && done[i].total < done[i - 1].total; i--) dec++;
+      const headline = inc >= 2 ? `Ciclo semanal subiu ${inc} vezes seguidas`
+        : dec >= 2 ? `Ciclo semanal caiu ${dec} vezes seguidas`
+        : a > b ? "Ciclo semanal subiu vs. o anterior"
+        : a < b ? "Ciclo semanal caiu vs. o anterior" : "Ciclo semanal estável";
+      const best = done.reduce((m, c) => (c.total > m.total ? c : m), done[0]);
+      const span = s => `${fmtDate(s)}–${fmtDate(addDays(s, 6))}`;
+      const curTotal = cycTotals.get(isoOf(curStart)) || 0;
+      const curDays = lastDate >= curStart ? daysBetween(curStart, lastDate) + 1 : 0;
+      const abertoNoCiclo = partialRow && partialRow.date >= curStart;
+      items.push({
+        tag: "Ciclo semanal",
+        headline,
+        detail: `atual (${span(curStart)}): ${fmtK(curTotal)} k em ${curDays} dia${curDays === 1 ? "" : "s"}${abertoNoCiclo ? " com hoje em aberto" : ""}` +
+          ` · ciclo anterior: ${fmtK(a)} k` +
+          ` · melhor: ${fmtK(best.total)} k (${span(best.start)})`
+      });
+    }
+
+    // dias pesados
+    // Patamares ("dia pesado", faixas, dias leves) vêm dos percentis dos próprios dias fechados, arredondados para
+    // números redondos — assim os cartões fazem sentido para quem gasta pouco, para quem gasta muito e em cada contagem.
+    const closedAsc = CLOSED.map(r => r.k).sort((a, b) => a - b);
+    const pAll = p => closedAsc.length ? closedAsc[Math.min(closedAsc.length - 1, Math.round(p * (closedAsc.length - 1)))] : 0;
+    const levelsAt = ps => [...new Set(ps.map(p => snapNice(pAll(p))))];
+    const HEAVY = snapNice(pAll(0.75));
+    const heavyAll = CLOSED.filter(r => r.k >= HEAVY).length;
+    if (heavyAll > 0) {
+      const heavy30 = last30.filter(r => r.k >= HEAVY).length;
+      items.push({
+        tag: "Dias pesados",
+        headline: `${heavy30} dos ${heavyAll} dias acima de ${fmtK(HEAVY)} k foram nos últimos 30d`,
+        detail: `${pct(heavy30 / last30.length)} dos dias com uso nos últimos 30d passam de ${fmtK(HEAVY)} k`
+      });
+    }
+
+    // concentração
+    const top = [...CLOSED].sort((a, b) => b.k - a.k);
+    const top5 = sumK(top.slice(0, 5));
+    items.push({
+      tag: "Concentração",
+      headline: `Os 5 maiores dias somam ${pct(top5 / total)} do total`,
+      detail: `${fmtK(top5)} k de ${fmtK(total)} k, em 5 de ${CLOSED.length} dias fechados`
+    });
+
+    // faixas de consumo: quantos dias passaram de cada patamar (30d e total)
+    const LEVELS = levelsAt([0.2, 0.4, 0.6, 0.8, 0.95]);
+    const cell = (n, base) => `${n} (${pct(n / base)})`;
+    items.push({
+      tag: "Faixas de consumo",
+      headline: "Dias que passaram de cada patamar",
+      detail: `base: ${last30.length} dias nos últimos 30d · ${CLOSED.length} no total (dias fechados com uso)`,
+      table: {
+        head: ["", "30d", "total"],
+        rows: LEVELS.map(t => [
+          `≥ ${fmtK(t)} k`,
+          cell(last30.filter(r => r.k >= t).length, last30.length),
+          cell(CLOSED.filter(r => r.k >= t).length, CLOSED.length)
+        ])
+      }
+    });
+
+    // quartis: "P% dos dias passam de X" => X é o percentil (100 - P)
+    const sorted30 = last30.map(r => r.k).sort((a, b) => a - b);
+    const sortedAll = CLOSED.map(r => r.k).sort((a, b) => a - b);
+    const quant = (arr, q) => {
+      if (!arr.length) return null;
+      const pos = q * (arr.length - 1), lo = Math.floor(pos), hi = Math.ceil(pos);
+      return arr[lo] + (arr[hi] - arr[lo]) * (pos - lo);
+    };
+    const fq = v => v === null ? "—" : fmtK(Math.round(v)) + " k";
+    const med30 = quant(sorted30, 0.5), medAll = quant(sortedAll, 0.5);
+    items.push({
+      tag: "Distribuição",
+      headline: `Metade dos dias passa de ${fq(med30)} nos últimos 30d`,
+      detail: `cada linha: % dos dias que passam do valor · mediana do total: ${fq(medAll)}`,
+      table: {
+        head: ["", "30d", "total"],
+        rows: [10, 25, 50, 75, 90].map(p => [
+          `${p}% dos dias`,
+          fq(quant(sorted30, 1 - p / 100)),
+          fq(quant(sortedAll, 1 - p / 100))
+        ])
+      }
+    });
+
+    // dias leves: espelho das faixas de cima (abaixo de cada patamar)
+    const LOW = levelsAt([0.1, 0.25, 0.4, 0.55, 0.75, 0.9]);
+    const LIGHT = snapNice(pAll(0.15));    // patamar usado na manchete
+    const LOW_RUN = snapNice(pAll(0.4));   // patamar da "maior sequência abaixo de"
+    const asc30 = [...last30].sort((a, b) => a.k - b.k);
+    const ascAll = [...CLOSED].sort((a, b) => a.k - b.k);
+    // maior sequência de dias consecutivos abaixo de LOW_RUN nos últimos 30d
+    let runLow = 0, bestLow = 0, prevLow = null;
+    last30.forEach(r => {
+      if (r.k < LOW_RUN) {
+        runLow = prevLow && daysBetween(prevLow, r.date) === 1 ? runLow + 1 : 1;
+        prevLow = r.date;
+        bestLow = Math.max(bestLow, runLow);
+      } else { runLow = 0; prevLow = null; }
+    });
+    if (asc30.length) {
+      const light30 = last30.filter(r => r.k < LIGHT).length;
+      let lightDetail = `mais leve nos 30d: ${fmtDate(asc30[0].date)} (${fmtK(asc30[0].k)} k) · mais leve no total: ${fmtDate(ascAll[0].date)} (${fmtK(ascAll[0].k)} k)`;
+      if (bestLow > 0) lightDetail += ` · maior sequência abaixo de ${fmtK(LOW_RUN)} k: ${bestLow} dia${bestLow > 1 ? "s" : ""}`;
+      items.push({
+        tag: "Dias leves",
+        headline: `${light30} dos últimos ${last30.length} dias ficaram abaixo de ${fmtK(LIGHT)} k`,
+        detail: lightDetail,
+        table: {
+          head: ["", "30d", "total"],
+          rows: LOW.map(t => [
+            `< ${fmtK(t)} k`,
+            cell(last30.filter(r => r.k < t).length, last30.length),
+            cell(CLOSED.filter(r => r.k < t).length, CLOSED.length)
+          ])
+        }
+      });
+    }
+
+    // semana x fim de semana (últimos 30d)
+    const wd = last30.filter(r => !r.weekend), we = last30.filter(r => r.weekend);
+    if (wd.length && we.length) {
+      const aWd = sumK(wd) / wd.length, aWe = sumK(we) / we.length, diff = aWe / aWd - 1;
+      const headline = Math.abs(diff) < 0.1 ? "Semana e fim de semana no mesmo ritmo"
+        : diff > 0 ? "Fim de semana mais forte que a semana" : "Semana mais forte que o fim de semana";
+      items.push({
+        tag: "Semana × fim de semana",
+        headline,
+        detail: `semana ${r0(aWd)} k/dia (${wd.length} dias) · fim de semana ${r0(aWe)} k/dia (${we.length} dias), últimos 30d`
+      });
+    }
+
+    // mês corrente
+    const y = lastClosed.getFullYear(), m = lastClosed.getMonth();
+    const inMonth = (r, yy, mm) => r.date.getFullYear() === yy && r.date.getMonth() === mm;
+    const mRows = CLOSED.filter(r => inMonth(r, y, m));
+    const elapsed = lastClosed.getDate(), dim = new Date(y, m + 1, 0).getDate();
+    const prev = new Date(y, m - 1, 1);
+    const prevRows = CLOSED.filter(r => inMonth(r, prev.getFullYear(), prev.getMonth()));
+    const parts = [];
+    if (prevRows.length) parts.push(`${MESES_FULL[prev.getMonth()]} fechou em ${fmtK(sumK(prevRows))} k`);
+    if (elapsed < dim) parts.push(`no ritmo do mês (${r0(sumK(mRows) / elapsed)} k/dia) fecha em ~${r0(sumK(mRows) / elapsed * dim)} k`);
+    const mName = MESES_FULL[m][0].toUpperCase() + MESES_FULL[m].slice(1);
+    items.push({ tag: "Mês", headline: `${mName}: ${fmtK(sumK(mRows))} k em ${elapsed} dias`, detail: parts.join(" · ") });
+
+    // marcos: quando o acumulado cruzou cada patamar (inclui o dia em aberto, como o total)
+    const MARCOS = [10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000].map(m => m * 1000);
+    const crossed = [];
+    let accM = 0, mi = 0;
+    for (const r of RAW) {
+      accM += r.k;
+      while (mi < MARCOS.length && accM >= MARCOS[mi]) { crossed.push({ m: MARCOS[mi], date: r.date }); mi++; }
+    }
+    const nextM = MARCOS[mi];
+    const nextTxt = nextM ? `próximo: ${fmtGoalLabel(nextM)}, faltam ${fmtK(nextM - accM)} k` : "";
+    if (crossed.length) {
+      const lastC = crossed[crossed.length - 1], prevC = crossed[crossed.length - 2];
+      const earlier = crossed.slice(0, -1).slice(-2).reverse().map(c => `${fmtGoalLabel(c.m)} em ${fmtDate(c.date)}`);
+      items.push({
+        tag: "Marcos",
+        headline: `${fmtGoalLabel(lastC.m)} cruzados em ${fmtDate(lastC.date)}` +
+          (prevC ? `, ${daysBetween(prevC.date, lastC.date)} dias depois dos ${fmtGoalLabel(prevC.m)}` : ""),
+        detail: [...earlier, nextTxt].filter(Boolean).join(" · ")
+      });
+    } else {
+      items.push({ tag: "Marcos", headline: "Nenhum marco ainda", detail: nextTxt });
+    }
+
+    // recordes
+    items.push({
+      tag: "Recordes",
+      headline: `Maior dia: ${fmtK(top[0].k)} k em ${fmtDateFull(top[0].date)}`,
+      detail: `2º ${fmtDate(top[1].date)} (${fmtK(top[1].k)} k) · 3º ${fmtDate(top[2].date)} (${fmtK(top[2].k)} k)`
+    });
+
+    // ordem fixa: 4 linhas de 3 — agora · distribuição (os 3 grandes) · perfil · histórico
+    const ORDER = ["Tendência", "Sequência atual", "Ciclo semanal",
+      "Faixas de consumo", "Distribuição", "Dias leves",
+      "Dias pesados", "Concentração", "Semana × fim de semana",
+      "Mês", "Recordes", "Marcos"];
+    items.sort((x, y) => ORDER.indexOf(x.tag) - ORDER.indexOf(y.tag));
+
+    const host = document.getElementById("insights");
+    esconderInfo();
+    host.innerHTML = "";
+    items.forEach(it => {
+      const div = document.createElement("div"); div.className = "insight";
+      const tag = document.createElement("div"); tag.className = "tag"; tag.textContent = it.tag;
+      const h = document.createElement("div"); h.className = "headline"; h.textContent = it.headline;
+      const d = document.createElement("div"); d.className = "detail"; d.textContent = it.detail;
+      div.append(tag, h, d);
+      if (it.table) {
+        const t = document.createElement("table"); t.className = "mini";
+        const thead = document.createElement("thead"), hr = document.createElement("tr");
+        it.table.head.forEach(c => { const th = document.createElement("th"); th.textContent = c; hr.appendChild(th); });
+        thead.appendChild(hr); t.appendChild(thead);
+        const tb = document.createElement("tbody");
+        it.table.rows.forEach(row => {
+          const tr = document.createElement("tr");
+          row.forEach(c => { const td = document.createElement("td"); td.textContent = c; tr.appendChild(td); });
+          tb.appendChild(tr);
+        });
+        t.appendChild(tb); div.appendChild(t);
+      }
+      attachInfo(div, it.tag);
+      host.appendChild(div);
+    });
+  }
+
+  // ---- gráfico acumulado até a meta -----------------------------------------
+  function niceStep(x) {
+    const pow = Math.pow(10, Math.floor(Math.log10(x)));
+    const f = x / pow;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow;
+  }
+
+  function renderCumulative() {
+    const svg = document.getElementById("cumChart");
+    svg.innerHTML = "";
+    const first = RAW[0].date;
+    const totalDays = daysBetween(first, lastDate);
+    const pts = [];
+    let cum = 0;
+    for (let t = 0; t <= totalDays; t++) {
+      const d = addDays(first, t);
+      const k = byIso.get(isoOf(d)) || 0;
+      cum += k;
+      pts.push({ t, date: d, k, cum });
+    }
+    const total = cum, rate = projRate;
+    const reaches = total < goal && rate > 0 && (goal - total) / rate <= 180;
+    const hLine = total >= goal || !(rate > 0) ? 0 : reaches ? (goal - total) / rate : 180;
+    const projEnd = total + rate * hLine;
+    const xDomain = totalDays + Math.max(hLine, 7) * 1.04;
+    const yRaw = Math.max(total, projEnd, 1);
+    const step = niceStep(yRaw / 4);
+    const niceMax = Math.ceil((yRaw * 1.06) / step) * step;
+
+    const host = svg.parentElement;
+    const padL = 48, padR = 20, padT = 20, padB = 30, plotH = 240;
+    const width = Math.max(560, host.clientWidth || 800);
+    const plotW = width - padL - padR, height = padT + plotH + padB;
+    svg.setAttribute("width", width); svg.setAttribute("height", height);
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    const x = t => padL + (t / xDomain) * plotW;
+    const y = v => padT + plotH - (v / niceMax) * plotH;
+    const fmtM = v => v === 0 ? "0" : (v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "M";
+
+    // grade e eixo y
+    for (let v = 0; v <= niceMax + 1e-6; v += step) {
+      svg.appendChild(el("line", { x1: padL, x2: width - padR, y1: y(v), y2: y(v), class: "grid-line" }));
+      const tx = el("text", { x: padL - 8, y: y(v) + 3, "text-anchor": "end", class: "axis-label" });
+      tx.textContent = fmtM(v);
+      svg.appendChild(tx);
+    }
+    svg.appendChild(el("line", { x1: padL, x2: width - padR, y1: y(0), y2: y(0), class: "baseline" }));
+
+    // eixo x: início da série + começo de cada mês
+    const endDate = addDays(first, Math.floor(xDomain));
+    const monthTicks = [];
+    for (let mo = new Date(first.getFullYear(), first.getMonth() + 1, 1); mo <= endDate; mo = new Date(mo.getFullYear(), mo.getMonth() + 1, 1)) {
+      monthTicks.push({ t: daysBetween(first, mo), date: mo });
+    }
+    if (!monthTicks.length || x(monthTicks[0].t) - padL > 44) {
+      const l0 = el("text", { x: padL, y: padT + plotH + 18, class: "axis-label" });
+      l0.textContent = fmtDate(first);
+      svg.appendChild(l0);
+    }
+    monthTicks.forEach(mt => {
+      svg.appendChild(el("line", { x1: x(mt.t), x2: x(mt.t), y1: padT, y2: padT + plotH, class: "grid-line" }));
+      const lb = el("text", { x: x(mt.t) + 3, y: padT + plotH + 18, class: "month-tick" });
+      lb.textContent = MESES_PT[mt.date.getMonth()] + (mt.date.getMonth() === 0 ? "/" + String(mt.date.getFullYear()).slice(2) : "");
+      svg.appendChild(lb);
+    });
+
+    // meta
+    if (goal > 0 && goal <= niceMax) {
+      svg.appendChild(el("line", { x1: padL, x2: width - padR, y1: y(goal), y2: y(goal), class: "goal-line" }));
+      const gl = el("text", { x: padL + 4, y: y(goal) - 6, class: "end-label" });
+      gl.textContent = OBJ[objetivo].linhaGrafico(fmtGoalLabel(goal));
+      svg.appendChild(gl);
+    }
+
+    // acumulado (área + linha) e projeção tracejada
+    const linePath = pts.map((p, i) => (i ? "L" : "M") + x(p.t).toFixed(1) + "," + y(p.cum).toFixed(1)).join(" ");
+    svg.appendChild(el("path", { class: "cum-area", d: linePath + ` L${x(totalDays).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z` }));
+    svg.appendChild(el("path", { class: "cum-line", d: linePath }));
+    if (hLine > 0) {
+      svg.appendChild(el("path", { class: "cum-proj", d: `M${x(totalDays).toFixed(1)},${y(total).toFixed(1)} L${x(totalDays + hLine).toFixed(1)},${y(projEnd).toFixed(1)}` }));
+    }
+
+    // marcadores e rótulos diretos (só o ponto atual e a chegada)
+    svg.appendChild(el("circle", { class: "cum-dot", cx: x(totalDays), cy: y(total), r: 4 }));
+    const nowLbl = el("text", { x: x(totalDays) - 8, y: y(total) - 10, "text-anchor": "end", class: "end-label" });
+    nowLbl.textContent = fmtM(total);
+    svg.appendChild(nowLbl);
+    if (reaches) {
+      svg.appendChild(el("circle", { class: "cum-dot", cx: x(totalDays + hLine), cy: y(projEnd), r: 4 }));
+      const arr = el("text", { x: x(totalDays + hLine), y: y(projEnd) - 10, "text-anchor": "end", class: "end-label" });
+      arr.textContent = fmtDate(daysToGoal(total, rate).date);
+      svg.appendChild(arr);
+    }
+
+    // hover: cruzeta que gruda no dia mais próximo, um tooltip para tudo
+    const cross = el("line", { class: "crosshair", y1: padT, y2: padT + plotH, style: "display:none" });
+    const dot = el("circle", { class: "cum-dot", r: 4, style: "display:none" });
+    svg.append(cross, dot);
+    const overlay = el("rect", { x: padL, y: padT, width: plotW, height: plotH, fill: "transparent" });
+    const move = ev => {
+      const px = ev.clientX - svg.getBoundingClientRect().left;
+      let t = Math.round(((px - padL) / plotW) * xDomain);
+      t = Math.max(0, Math.min(t, totalDays + Math.floor(hLine)));
+      let value, rows;
+      if (t <= totalDays) {
+        const p = pts[t]; value = p.cum;
+        rows = [{ heading: fmtDateFull(p.date) + " · " + DIAS_PT[p.date.getDay()] },
+                { kind: "acumulado", val: fmtK(p.cum) + " k" }, { kind: "no dia", val: fmtK(p.k) + " k" }];
+      } else {
+        const d = addDays(first, t); value = total + rate * (t - totalDays);
+        rows = [{ heading: fmtDateFull(d) + " · " + DIAS_PT[d.getDay()] },
+                { kind: "projeção", val: r0(value) + " k" }, { kind: "ritmo", val: r0(rate) + " k/dia" }];
+      }
+      cross.setAttribute("x1", x(t)); cross.setAttribute("x2", x(t));
+      dot.setAttribute("cx", x(t)); dot.setAttribute("cy", y(value));
+      cross.style.display = dot.style.display = "";
+      showTooltip(ev.clientX, ev.clientY, rows);
+    };
+    overlay.addEventListener("pointermove", move);
+    overlay.addEventListener("pointerenter", move);
+    overlay.addEventListener("pointerleave", () => { cross.style.display = dot.style.display = "none"; hideTooltip(); });
+    svg.appendChild(overlay);
+  }
+
+  // ---- calculadora: quanto por dia até a meta ---------------------------------------
+  // "hoje" = primeiro dia ainda não fechado. O parcial de hoje vive só aqui.
+  const todayDate = partialRow ? partialRow.date : addDays(lastClosed, 1);
+  const calcPartial = document.getElementById("calcPartial");
+  const calcDays = document.getElementById("calcDays");
+  const calcDate = document.getElementById("calcDate");
+  const PARTIAL_KEY = "claudeUsageDashboard.parcial." + isoOf(todayDate);
+  if (partialRow) {
+    // valor que veio do arquivo manda; o campo segue editável para simular cenários
+    calcPartial.value = partialRow.k;
+  } else {
+    try {
+      const saved = localStorage.getItem(PARTIAL_KEY);
+      if (saved !== null && saved !== "") calcPartial.value = saved;
+    } catch (e) { /* armazenamento indisponível: segue sem salvar */ }
+  }
+  document.getElementById("calcTodayLabel").textContent = fmtDateFull(todayDate) + " · " + DIAS_PT[todayDate.getDay()];
+  calcDate.min = isoOf(todayDate);
+  const syncDateFromDays = () => {
+    const n = parseInt(calcDays.value, 10);
+    if (Number.isFinite(n) && n >= 1) calcDate.value = isoOf(addDays(todayDate, n - 1));
+  };
+  syncDateFromDays();
+
+  document.getElementById("legendaParcial").hidden = !partialRow;
+  function paintCalcNote() {   // o parcial vem do arquivo, então muda junto com a contagem escolhida
+    document.getElementById("calcNote").textContent =
+      (objetivo === "limite" ? "Divide o que ainda cabe no limite pelos dias do prazo, contando o resto de hoje como um dia. "
+        : "Divide o que ainda falta pelos dias do prazo, contando o resto de hoje como um dia. ") +
+      (partialRow
+        ? `O parcial de ${fmtDate(todayDate)} veio do arquivo (${fmtK(partialRow.k)} k) e já conta no total acumulado; editar o campo aqui só simula cenários, não altera o registro.`
+        : "O parcial digitado fica salvo neste navegador só até o dia virar e não entra no total acumulado.");
+  }
+  paintCalcNote();
+
+  const realToday = new Date(); realToday.setHours(0, 0, 0, 0);
+  const gapDays = daysBetween(todayDate, realToday);
+  if (gapDays > 0) {
+    const w = document.getElementById("calcWarn");
+    w.hidden = false;
+    w.textContent = `Atenção: o último dia registrado é ${fmtDateFull(lastDate)}, mas hoje já é ${fmtDateFull(realToday)} — ${gapDays} dia${gapDays > 1 ? "s" : ""} sem registro. A calculadora trata ${fmtDateFull(todayDate)} como "hoje".`;
+  }
+
+  function renderCalc() {
+    document.getElementById("calcGoalLabel").textContent = fmtGoalLabel(goal);
+    const closed = sumK(CLOSED);
+    const partial = Math.max(0, parseFloat(calcPartial.value) || 0);
+    const N = parseInt(calcDays.value, 10);
+    const okN = Number.isFinite(N) && N >= 1;
+    const need = Math.max(0, goal - closed - partial);
+    const avg30 = windowStats(30).rate, avg7 = windowStats(7).rate;
+    const record = Math.max(...CLOSED.map(r => r.k));
+    const perDay = okN ? need / N : null;
+    const times = (v, base) => base > 0 ? (v / base).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "×" : "—";
+
+    const lim = objetivo === "limite", O = OBJ[objetivo];
+    const tiles = [
+      { label: O.tAinda, value: fmtK(Math.round(need)) + " k",
+        sub: `${fmtK(goal)} − ${fmtK(closed)} fechado − ${fmtK(Math.round(partial))} hoje` },
+      { label: okN ? `${O.tPorDia}, em ${N} dia${N > 1 ? "s" : ""}` : O.tPorDia, value: okN ? r0(perDay) + " k" : "—",
+        sub: okN ? `${times(perDay, avg30)} a média de 30d (${r0(avg30)} k) · ${times(perDay, avg7)} a de 7d` : "informe um prazo de 1 dia ou mais" },
+      { label: O.tHoje, value: okN ? r0(perDay) + " k" : "—",
+        sub: okN ? (lim ? `ficaria em ≈ ${r0(partial + perDay)} k hoje` : `fecharia o dia com ≈ ${r0(partial + perDay)} k`) : "—" },
+      { label: O.tTudo, value: fmtK(Math.round(need)) + " k",
+        sub: need <= record ? `${pct(need / record)} do seu recorde diário (${fmtK(record)} k)` : `${times(need, record)} o seu recorde diário (${fmtK(record)} k)` },
+    ];
+    const box = document.getElementById("calcResults");
+    esconderInfo();
+    box.innerHTML = "";
+    tiles.forEach(t => {
+      const div = document.createElement("div"); div.className = "tile";
+      const l = document.createElement("div"); l.className = "label"; l.textContent = t.label;
+      const v = document.createElement("div"); v.className = "value"; v.textContent = t.value;
+      const s = document.createElement("div"); s.className = "sub"; s.textContent = t.sub;
+      div.append(l, v, s);
+      attachInfo(div, t.label);
+      box.appendChild(div);
+    });
+
+    let verdict;
+    if (lim) {   // objetivo "ficar dentro de um limite": perDay é o MÁXIMO que cabe por dia
+      if (need <= 0) verdict = closed >= goal
+        ? "Limite já atingido só com os dias fechados. Escolha um limite maior em “Projeção” se quiser planejar o próximo."
+        : "Limite atingido contando o parcial de hoje.";
+      else if (!okN) verdict = "";
+      else if (avg30 <= perDay) verdict = `Dentro do limite: no seu ritmo recente (${r0(avg30)} k/dia) você fica abaixo do máximo de ${r0(perDay)} k/dia.`;
+      else { const dd = Math.max(0, Math.floor(need / avg30)); verdict = `Acima do que cabe no limite: seu ritmo recente (${r0(avg30)} k/dia) passa do máximo de ${r0(perDay)} k/dia — nesse ritmo o limite acaba em cerca de ${dd} dia${dd === 1 ? "" : "s"}.`; }
+    } else if (need <= 0) verdict = closed >= goal
+      ? "Meta já atingida só com os dias fechados. Escolha uma meta maior em “Projeção” para planejar a próxima."
+      : "Meta já atingida contando o parcial de hoje.";
+    else if (!okN) verdict = "";
+    else if (perDay <= avg30) verdict = `Dentro do seu ritmo recente (média de 30d: ${r0(avg30)} k/dia).`;
+    else if (perDay <= record) verdict = `Acima da sua média de 30d, mas abaixo do que você já fez num único dia (recorde: ${fmtK(record)} k).`;
+    else verdict = `Acima do seu recorde diário (${fmtK(record)} k): exigiria superá-lo em todos os dias do prazo.`;
+    document.getElementById("calcVerdict").textContent = verdict;
+
+    const ns = [1, 3, 7, 14, 30, 60];
+    if (okN && !ns.includes(N)) ns.push(N);
+    ns.sort((a, b) => a - b);
+    const tbody = document.getElementById("calcTable");
+    tbody.innerHTML = "";
+    ns.forEach(n => {
+      const v = need / n;
+      const tr = document.createElement("tr");
+      if (okN && n === N) tr.className = "selected";
+      [`${n} dia${n > 1 ? "s" : ""}`, r0(v) + " k", times(v, avg30), fmtDateFull(addDays(todayDate, n - 1))].forEach((c, i) => {
+        const td = document.createElement("td");
+        if (i > 0) td.className = "num";
+        td.textContent = c; tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  calcPartial.addEventListener("input", () => {
+    try { localStorage.setItem(PARTIAL_KEY, calcPartial.value); } catch (e) { /* sem armazenamento */ }
+    renderCalc();
+  });
+  calcDays.addEventListener("input", () => { syncDateFromDays(); renderCalc(); });
+  calcDate.addEventListener("input", () => {
+    if (!calcDate.value) return;
+    const n = daysBetween(todayDate, new Date(calcDate.value + "T00:00:00")) + 1;
+    calcDays.value = Math.max(1, n);
+    if (n < 1) syncDateFromDays();
+    renderCalc();
+  });
+  document.querySelectorAll(".streak-sort button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      streakSort = btn.dataset.sort;
+      document.querySelectorAll(".streak-sort button").forEach(b => b.setAttribute("aria-pressed", b === btn));
+      renderStreaks();
+    });
+  });
+
+  // ---- tabela ----------------------------------------------------------
+  function renderTable() {
+    const tbody = document.getElementById("rawBody");
+    tbody.innerHTML = "";
+    [...RAW].reverse().forEach(r => {
+      const tr = document.createElement("tr");
+      const tdDate = document.createElement("td"); tdDate.textContent = fmtDateFull(r.date);
+      const tdDow = document.createElement("td"); tdDow.textContent = DIAS_PT[r.date.getDay()];
+      const tdK = document.createElement("td"); tdK.textContent = fmtK(r.k) + (r.parcial ? " (aberto)" : "");
+      tr.append(tdDate, tdDow, tdK);
+      [fmtTok(r.entrada), fmtTok(r.saida), fmtTok(r.cacheCriado), fmtTok(r.cacheLido), r.sessoes].forEach(c => {
+        const td = document.createElement("td"); td.textContent = c; tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ---- filtro UI (período dos gráficos/KPIs) -----------------------------
+  // Atalhos (7d…180d), "Personalizado" (últimos N dias, ou um intervalo de datas do passado) e o vínculo com o calendário.
+  // O período vale para o Geral, o gráfico por dia, o total por mês e (se "calendário acompanha" estiver marcado) o calendário.
+  const perPainel = document.getElementById("periodCustom"), perDias = document.getElementById("perDias");
+  const perDe = document.getElementById("perDe"), perAte = document.getElementById("perAte");
+  const perCal = document.getElementById("perCal"), perResumo = document.getElementById("periodoResumo");
+  perDe.min = perAte.min = isoOf(firstDate); perDe.max = perAte.max = isoOf(lastDate);
+  function paintPeriodoResumo() {
+    const p = periodoAtual();
+    if (!p) { perResumo.textContent = `Todo o histórico: ${fmtDateFull(firstDate)} a ${fmtDateFull(lastDate)} · ${RAW.length} dias com uso`; return; }
+    const total = daysBetween(p.ini, p.fim) + 1, n = filtered().length;
+    perResumo.textContent = `Período: ${fmtDateFull(p.ini)} a ${fmtDateFull(p.fim)} · ${total} dia${total === 1 ? "" : "s"} no calendário, ${n} com uso`;
+  }
+  function aplicarPeriodo() {
+    paintPeriodoResumo();
+    paintCalControles();
+    renderKPIs(); renderDaily(); renderMonthly(); renderCalendar(); renderDetalhes(); renderExtras();
+  }
+  paintPeriodoResumo();
+  document.querySelectorAll(".filters.period button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      range = btn.dataset.range;
+      document.querySelectorAll(".filters.period button").forEach(b => b.setAttribute("aria-pressed", b === btn));
+      perPainel.hidden = range !== "custom";
+      aplicarPeriodo();
+    });
+  });
+  perDias.addEventListener("input", () => {
+    const v = parseInt(perDias.value, 10);
+    if (!(v >= 1)) return;   // campo vazio ou inválido: mantém o período anterior até digitar um número
+    periodoCustom.modo = "dias"; periodoCustom.dias = v;
+    aplicarPeriodo();
+  });
+  [perDe, perAte].forEach(inp => inp.addEventListener("input", () => {
+    if (!perDe.value && !perAte.value) { periodoCustom.modo = "dias"; aplicarPeriodo(); return; }
+    periodoCustom.modo = "datas";
+    periodoCustom.de = perDe.value || isoOf(firstDate);    // só uma ponta preenchida: a outra vira o limite do histórico
+    periodoCustom.ate = perAte.value || isoOf(lastDate);
+    aplicarPeriodo();
+  }));
+  perCal.addEventListener("change", () => { calSegue = perCal.checked; salvarCal(); paintCalControles(); renderCalendar(); });
+
+  // ---- base da projeção (ritmo diário) -------------------------------------
+  const projCustomRow = document.getElementById("projCustomRow");
+  const projCustomInput = document.getElementById("projCustomInput");
+  document.querySelectorAll(".proj-basis button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      basis = btn.dataset.basis;
+      document.querySelectorAll(".proj-basis button").forEach(b => b.setAttribute("aria-pressed", b === btn));
+      projCustomRow.hidden = basis !== "custom";
+      renderProjection();
+    });
+  });
+  // ritmo padrão do campo "personalizado": a média dos dias fechados da contagem escolhida; um número que a pessoa
+  // digitou nunca é sobrescrito
+  let rateTouched = false;
+  function chooseRateForModo() {
+    if (rateTouched) return;
+    customRate = Math.max(1, snapNice(CLOSED.length ? sumK(CLOSED) / CLOSED.length : 0));
+    projCustomInput.value = customRate;
+  }
+  chooseRateForModo();
+  projCustomInput.addEventListener("input", () => {
+    rateTouched = true;
+    const v = parseFloat(projCustomInput.value);
+    customRate = Number.isFinite(v) && v > 0 ? v : 0;
+    if (basis === "custom") renderProjection();
+  });
+
+  // ---- meta da projeção -----------------------------------------------------
+  const goalCustomRow = document.getElementById("goalCustomRow");
+  const goalCustomInput = document.getElementById("goalCustomInput");
+  // Cada contagem tem um total de escala diferente, então os botões e a meta lembrada são por contagem
+  // e se refazem quando ela troca (chooseGoalForModo).
+  const goalByModo = {};
+  let goalBasis = "";
+  let goalOptsM = [];
+  function updateGoal() {
+    goal = (goalBasis === "custom" ? customGoalM : parseFloat(goalBasis)) * 1000;
+    if (!(goal > 0)) goal = 0;
+  }
+  const goalBar = document.querySelector(".proj-goal");
+  const goalCustomBtn = goalBar.querySelector('button[data-goal="custom"]');
+  function paintGoalButtons() {
+    goalBar.querySelectorAll("button[data-goal]:not([data-goal='custom'])").forEach(b => b.remove());
+    goalOptsM.forEach(m => {
+      const b = document.createElement("button");
+      b.dataset.goal = String(m);
+      b.textContent = fmtGoalLabel(m * 1000);
+      goalBar.insertBefore(b, goalCustomBtn);
+    });
+    goalBar.querySelectorAll("button[data-goal]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.goal === goalBasis)));
+    goalCustomRow.hidden = goalBasis !== "custom";
+  }
+  function chooseGoalForModo() {
+    const defM = goalDefaultM();
+    goalOptsM = GOAL_STEPS_M.slice(Math.max(0, GOAL_STEPS_M.indexOf(defM) - 1)).slice(0, 5);   // poucos botões: um abaixo e três acima da meta padrão
+    if (!goalByModo[modo]) goalByModo[modo] = String(defM);
+    goalBasis = goalByModo[modo];
+    customGoalM = defM;
+    goalCustomInput.value = customGoalM;
+    paintGoalButtons();
+    updateGoal();
+  }
+  chooseGoalForModo();
+  goalBar.addEventListener("click", ev => {   // delegado: os botões são recriados a cada troca de contagem
+    const btn = ev.target.closest("button[data-goal]");
+    if (!btn) return;
+    goalBasis = btn.dataset.goal;
+    goalByModo[modo] = goalBasis;
+    goalBar.querySelectorAll("button[data-goal]").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+    goalCustomRow.hidden = goalBasis !== "custom";
+    updateGoal();
+    renderKPIs(); renderProjection();
+  });
+  goalCustomInput.addEventListener("input", () => {
+    const v = parseFloat(goalCustomInput.value);
+    customGoalM = Number.isFinite(v) && v > 0 ? v : 0;
+    if (goalBasis === "custom") { updateGoal(); renderKPIs(); renderProjection(); }
+  });
+
+  // ---- calendário de uso (todo o histórico, semana começando na segunda) ----
+  // Intensidade = raiz quadrada de k / maior dia: sem a raiz, um dia gigante deixaria
+  // todos os outros quase apagados. Dia sem registro = barra cinza ("não trabalhei").
+  const calLevel = t => Math.round(28 + 72 * t);   // 28%..100% de verde
+  // Opções do calendário (lembradas neste navegador): forma, quanto mostrar (semanas nos quadradinhos, meses no
+  // calendário tradicional) e o primeiro dia da semana. 26 semanas = 182 dias; 0 = todo o histórico.
+  let calView = "mes", calInicio = "seg", calSegue = true;   // calView: "mes" = calendário tradicional · "quad" = quadradinhos por semana
+  const calJanela = { quad: 26, mes: 6 };
+  const JANELAS = {
+    quad: [{ v: 13, t: "13 semanas" }, { v: 26, t: "26 semanas (182 dias)" }, { v: 52, t: "52 semanas" }, { v: 0, t: "Desde o início" }],
+    mes: [{ v: 3, t: "3 meses" }, { v: 6, t: "6 meses" }, { v: 12, t: "12 meses" }, { v: 0, t: "Desde o início" }]
+  };
+  try {
+    const o = JSON.parse(localStorage.getItem("calendario-opcoes") || "{}");
+    if (o.view === "mes" || o.view === "quad") calView = o.view;
+    if (o.inicio === "seg" || o.inicio === "dom") calInicio = o.inicio;
+    if (Number.isFinite(o.quad)) calJanela.quad = o.quad;
+    if (Number.isFinite(o.mes)) calJanela.mes = o.mes;
+    if (typeof o.segue === "boolean") calSegue = o.segue;
+  } catch (e) { /* sem armazenamento: usa os padrões */ }
+  const salvarCal = () => {
+    try { localStorage.setItem("calendario-opcoes", JSON.stringify({ view: calView, inicio: calInicio, quad: calJanela.quad, mes: calJanela.mes, segue: calSegue })); } catch (e) { /* vale só nesta visita */ }
+  };
+  const iniSemana = () => calInicio === "dom" ? 0 : 1;
+  const inicioDaSemana = dt => addDays(dt, -((dt.getDay() - iniSemana() + 7) % 7));
+  const nomesDias = () => calInicio === "dom" ? ["dom","seg","ter","qua","qui","sex","sáb"] : ["seg","ter","qua","qui","sex","sáb","dom"];
+  // primeira semana desenhada e quantas colunas; se a janela pedida for maior que o histórico, mostra só o que existe
+  function janelaSemanas() {
+    const primeira = inicioDaSemana(firstDate), ultima = inicioDaSemana(lastDate);
+    let ini = calJanela.quad > 0 ? addDays(ultima, -7 * (calJanela.quad - 1)) : primeira;
+    if (ini < primeira) ini = primeira;
+    return { ini, n: Math.round(daysBetween(ini, ultima) / 7) + 1 };
+  }
+  // período do Geral que o calendário deve mostrar (só quando "calendário acompanha o período" está marcado e há um período)
+  const periodoCalendario = () => (calSegue && range !== "all") ? periodoAtual() : null;
+  function janelaMeses() {
+    const primeiro = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1), ultimo = new Date(lastDate.getFullYear(), lastDate.getMonth(), 1);
+    let ini = calJanela.mes > 0 ? new Date(ultimo.getFullYear(), ultimo.getMonth() - (calJanela.mes - 1), 1) : primeiro;
+    if (ini < primeiro) ini = primeiro;
+    return { ini, ultimo, n: (ultimo.getFullYear() - ini.getFullYear()) * 12 + ultimo.getMonth() - ini.getMonth() + 1 };
+  }
+  function bindCalTip(cell, date, r, maxK) {
+    const tip = ev => {
+      const rect = cell.getBoundingClientRect();
+      const ptr = ev.type.startsWith("pointer");
+      showTooltip(ptr ? ev.clientX : rect.left + rect.width / 2, ptr ? ev.clientY : rect.top, [
+        { heading: fmtDateFull(date) + " · " + DIAS_PT[date.getDay()] },
+        { kind: "sem cache lido", val: fmtK(r.k) + " k" },
+        { kind: r.parcial ? "dia em aberto" : "do maior dia", val: r.parcial ? "parcial" : Math.round(r.k / maxK * 100) + "%" },
+        { kind: "saída", val: fmtTok(r.saida) },
+        { kind: "sessões", val: String(r.sessoes) }
+      ]);
+    };
+    ["pointerenter", "pointermove", "focus"].forEach(t => cell.addEventListener(t, tip));
+    ["pointerleave", "blur"].forEach(t => cell.addEventListener(t, hideTooltip));
+  }
+  // uma coluna por semana (começando na segunda ou no domingo), nas últimas N semanas pedidas (ou desde o primeiro registro)
+  function renderSquares(host, rowByIso, maxK, todayIso) {
+    const scroll = document.createElement("div"); scroll.className = "sq-scroll";
+    const wrap = document.createElement("div"); wrap.className = "sq-wrap";
+    const dow = document.createElement("div"); dow.className = "sq-dow";
+    const sp = document.createElement("div"); sp.className = "sq-label"; dow.appendChild(sp);
+    nomesDias().forEach(d => { const s = document.createElement("span"); s.textContent = d; dow.appendChild(s); });
+    wrap.appendChild(dow);
+
+    const pj = periodoCalendario();   // acompanhando o período: só as semanas dele; dias fora do período ficam apagados
+    const visivel = dt => dt >= firstDate && dt <= lastDate && (!pj || (dt >= pj.ini && dt <= pj.fim));
+    const semIni = pj ? inicioDaSemana(pj.ini < firstDate ? firstDate : pj.ini) : janelaSemanas().ini;
+    const semFim = pj && pj.fim < lastDate ? pj.fim : lastDate;
+    let lastLabelMonth = -1;
+    for (let w = semIni; w <= semFim; w = addDays(w, 7)) {
+      const col = document.createElement("div"); col.className = "sq-week";
+      const lab = document.createElement("div"); lab.className = "sq-label";
+      col.appendChild(lab);
+      for (let i = 0; i < 7; i++) {
+        const date = addDays(w, i), iso = isoOf(date), r = rowByIso.get(iso);
+        const sq = document.createElement("div"); sq.className = "sq";
+        // o rótulo do mês vai na coluna em que o mês aparece pela primeira vez
+        if (visivel(date) && date.getMonth() !== lastLabelMonth && !lab.textContent) {
+          lastLabelMonth = date.getMonth();
+          lab.textContent = MESES_PT[lastLabelMonth] + (date.getFullYear() !== lastDate.getFullYear() ? "/" + String(date.getFullYear()).slice(2) : "");
+        }
+        if (date < firstDate || date > lastDate) sq.classList.add("fora");
+        else if (pj && (date < pj.ini || date > pj.fim)) sq.classList.add("apagado");   // existe no histórico, mas está fora do período escolhido
+        if (iso === todayIso) sq.classList.add("hoje");
+        if (r) {
+          const t = Math.sqrt(r.k / maxK);
+          sq.classList.add("uso");
+          if (t >= 0.8) sq.classList.add("forte");
+          if (r.parcial) sq.classList.add("parcial");
+          sq.style.setProperty("--lvl", calLevel(t) + "%");
+          sq.tabIndex = 0;
+          sq.setAttribute("aria-label", `${fmtDateFull(date)}: ${fmtK(r.k)} k tokens (${TEXTOS[modo].nome})${r.parcial ? " (dia em aberto)" : ""}`);
+          bindCalTip(sq, date, r, maxK);
+        } else if (!sq.classList.contains("fora")) {
+          sq.setAttribute("aria-label", `${fmtDateFull(date)}: sem uso`);
+        }
+        col.appendChild(sq);
+      }
+      wrap.appendChild(col);
+    }
+    scroll.appendChild(wrap);
+    host.style.display = "block";
+    host.appendChild(scroll);
+    scroll.scrollLeft = scroll.scrollWidth;   // abre no fim: o mais recente fica à vista
+  }
+  function renderCalendar() {
+    const host = document.getElementById("calMonths");
+    host.innerHTML = "";
+    host.style.display = "";
+    const scale = document.getElementById("calScale");
+    if (!scale.children.length) {
+      [0, .25, .5, .75, 1].forEach(t => {
+        const i = document.createElement("i");
+        i.style.background = `color-mix(in srgb, var(--neon) ${calLevel(t)}%, transparent)`;
+        i.style.boxShadow = "inset 0 0 0 1px color-mix(in srgb, var(--neon-edge) 70%, transparent)";
+        scale.appendChild(i);
+      });
+    }
+    const maxK = Math.max(...RAW.map(r => r.k)) || 1;
+    const rowByIso = new Map(RAW.map(r => [r.iso, r]));
+    const todayIso = isoOf(lastDate);
+    const resumo = document.getElementById("calResumo");
+    const pj = periodoCalendario();
+    if (pj && (pj.fim < firstDate || pj.ini > lastDate)) { resumo.textContent = "Nenhum dia do histórico cai dentro do período escolhido."; return; }
+    if (pj) resumo.textContent = `Acompanhando o período: ${fmtDateFull(pj.ini < firstDate ? firstDate : pj.ini)} a ${fmtDateFull(pj.fim > lastDate ? lastDate : pj.fim)} — desmarque “calendário acompanha o período” para usar a janela própria`;
+    if (calView === "quad") {
+      if (!pj) {
+        const j = janelaSemanas();
+        resumo.textContent = `${j.n} semana${j.n === 1 ? "" : "s"} · ${j.n * 7} dias` +
+          (calJanela.quad > 0 && j.n < calJanela.quad ? ` — o histórico só tem ${j.n} (você pediu ${calJanela.quad})` : "");
+      }
+      renderSquares(host, rowByIso, maxK, todayIso);
+      return;
+    }
+    if (!pj) {
+      const jm0 = janelaMeses();
+      resumo.textContent = `${jm0.n} ${jm0.n === 1 ? "mês" : "meses"}` +
+        (calJanela.mes > 0 && jm0.n < calJanela.mes ? ` — o histórico só tem ${jm0.n} (você pediu ${calJanela.mes})` : "");
+    }
+
+    const jm = janelaMeses();
+    let cur = jm.ini;
+    let lastMonthStart = jm.ultimo;
+    if (pj) {   // acompanhando o período: do mês do primeiro dia ao mês do último
+      const a = pj.ini < firstDate ? firstDate : pj.ini, b = pj.fim > lastDate ? lastDate : pj.fim;
+      cur = new Date(a.getFullYear(), a.getMonth(), 1);
+      lastMonthStart = new Date(b.getFullYear(), b.getMonth(), 1);
+    }
+    for (; cur <= lastMonthStart; cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)) {
+      const y = cur.getFullYear(), m = cur.getMonth();
+      const nDias = new Date(y, m + 1, 0).getDate();
+      const doMes = RAW.filter(r => r.date.getFullYear() === y && r.date.getMonth() === m && (!pj || (r.date >= pj.ini && r.date <= pj.fim)));
+
+      const box = document.createElement("div"); box.className = "cal-month";
+      const h = document.createElement("h3");
+      const nomeMes = cur.toLocaleDateString("pt-BR", { month: "long" });
+      h.textContent = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1) + " de " + y;
+      const meta = document.createElement("p"); meta.className = "cal-meta";
+      meta.textContent = `${doMes.length} dia${doMes.length === 1 ? "" : "s"} com uso · ${fmtTok(doMes.reduce((a, r) => a + r.k, 0) * 1000)} tokens`;
+      const grid = document.createElement("div"); grid.className = "cal-grid";
+      nomesDias().forEach(d => {
+        const c = document.createElement("div"); c.className = "cal-dow"; c.textContent = d; grid.appendChild(c);
+      });
+      for (let i = 0; i < (cur.getDay() - iniSemana() + 7) % 7; i++) {
+        const v = document.createElement("div"); v.className = "cal-day vazio"; grid.appendChild(v);
+      }
+      for (let d = 1; d <= nDias; d++) {
+        const date = new Date(y, m, d), iso = isoOf(date), r = rowByIso.get(iso);
+        const cell = document.createElement("div"); cell.className = "cal-day";
+        const num = document.createElement("span"); num.textContent = d;
+        const bar = document.createElement("div"); bar.className = "cal-bar";
+        cell.append(num, bar);
+        if (iso > todayIso || date < firstDate || (pj && (date < pj.ini || date > pj.fim))) cell.classList.add("futuro");   // fora do período registrado/escolhido
+        if (iso === todayIso) cell.classList.add("hoje");
+        if (r) {
+          const t = Math.sqrt(r.k / maxK);
+          cell.classList.add("uso");
+          if (t >= 0.8) cell.classList.add("forte");
+          if (r.parcial) cell.classList.add("parcial");
+          cell.style.setProperty("--lvl", calLevel(t) + "%");
+          cell.tabIndex = 0;
+          cell.setAttribute("aria-label", `${fmtDateFull(date)}: ${fmtK(r.k)} k tokens (${TEXTOS[modo].nome})${r.parcial ? " (dia em aberto)" : ""}`);
+          bindCalTip(cell, date, r, maxK);
+        } else if (iso <= todayIso && date >= firstDate) {
+          cell.setAttribute("aria-label", `${fmtDateFull(date)}: sem uso`);
+        }
+        grid.appendChild(cell);
+      }
+      box.append(h, meta, grid);
+      host.appendChild(box);
+    }
+  }
+
+  // ---- explicações: "?" em cada métrica ---------------------------------------------
+  // Mouse: a explicação aparece ao passar por cima do cartão. Toque (celular/tablet não tem "passar por cima"):
+  // toque no "?" do canto; toque fora, Esc ou rolar a página fecha. Teclado: o "?" recebe foco e Enter fixa/solta.
+  const AJUDA = {
+    "Meta diária e semanal": () => `Metas FIXAS que você define para o dia e para a semana (a semana começa como escolhido em “Semana começa”, no calendário). Mostra quanto já foi consumido hoje e na semana atual, na contagem escolhida, e que % isso é da meta.
+
+Sem metas salvas, o painel sugere uma a partir da sua média dos últimos 30 dias — use “editar metas” para fixar as suas. Cada contagem tem as suas metas, porque os totais têm escalas diferentes. No objetivo “ficar dentro de um limite”, viram limites e a barra muda de cor quando passam de 100%.`,
+    "Objetivo: atingir uma meta": () => `Você quer chegar a um total de tokens (por exemplo, para se desafiar a usar mais, ou para cumprir um volume combinado).
+
+As frases do painel falam em meta, progresso e “quanto por dia até a meta”. Os números são os mesmos nos dois objetivos; muda o jeito de ler.`,
+    "Objetivo: ficar dentro de um limite": () => `Você quer NÃO passar de um total de tokens (por exemplo, para economizar ou respeitar um orçamento).
+
+As frases passam a falar em limite, uso do limite e “quanto ainda posso gastar”, e a conta mostra o máximo que cabe por dia no prazo escolhido. Os números são os mesmos nos dois objetivos; muda o jeito de ler.`,
+    "Ainda posso gastar": () => "Limite escolhido − total dos dias fechados − o que já foi gasto hoje (parcial): quanto ainda cabe sem passar do limite.",
+    "Hoje ainda posso": () => "Quanto ainda cabe hoje, além do parcial, se você distribuir o que resta igualmente pelos dias do prazo.",
+    "Se eu gastar tudo hoje": () => "O que ainda cabe no limite, caso fosse gasto num único dia, comparado com o seu maior dia já registrado.",
+    "Contagem Claude Code": () => `Reconstrução da contagem que o painel de uso do Claude Code mostrava (é a contagem padrão deste dashboard).
+
+Como é feita: para cada dia, soma a ENTRADA + a SAÍDA de cada linha dos transcripts — os arquivos .jsonl que o Claude Code guarda no seu computador. Uma mesma resposta do Claude aparece em várias linhas (uma por bloco: texto, chamada de ferramenta…) e TODAS contam: por isso “com repetições”. O cache (criado e lido) fica de fora. O dia é o do fuso do seu computador.
+
+É uma ESTIMATIVA: num teste com 89 dias de uso de um único usuário, o total ficou a cerca de 2% do painel (0,98×). Dia a dia os valores podem variar mais — o total ao longo do tempo é a parte mais confiável.`,
+    "Contagem Alternativa": () => `Outra forma de enxergar o volume: o que o Claude processou, sem as repetições de linha.
+
+Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do Claude UMA vez só — sem repetir as linhas da mesma resposta, e por isso sem repetições de criação de cache. O cache LIDO (o contexto relido a cada resposta) fica de fora: somado, ele inflaria o total em ordens de grandeza. Aparece nos dados como “sem cache lido” e dá cerca de 3 vezes o valor da Contagem Claude Code.`,
+    "Total no período": () => `Soma de ${TEXTOS[modo].nome} nos dias do período escolhido, incluindo o dia em aberto (se houver). Em k tokens: 1.000 k = 1 milhão de tokens.`,
+    "Dias ativos": () => "Quantos dias tiveram algum uso do Claude Code neste computador no período. Dias sem uso não aparecem nos registros.",
+    "Média por dia fechado": () => "Total dos dias fechados ÷ número de dias fechados com uso (dias sem uso não entram na conta). O dia em aberto fica de fora porque ainda não terminou. Mediana = o valor do meio: metade dos dias ficou abaixo dela.",
+    "Maior dia": () => "O dia de maior consumo no período escolhido (o dia em aberto também pode ser o maior).",
+    "Entrada": () => "Tokens novos enviados ao modelo, fora do cache. Costumam ficar perto de zero, porque quase todo o contexto passa pelo cache. Soma do período; embaixo, a média por dia fechado.",
+    "Saída": () => "Tokens que o Claude escreveu: respostas, código e chamadas de ferramentas. Soma do período; embaixo, a média por dia fechado.",
+    "Cache criado": () => "Contexto gravado no cache de prompt para ser reaproveitado nas próximas respostas. Conta uma vez, no momento em que é escrito.",
+    "Cache lido": () => "Contexto reaproveitado do cache, relido a cada resposta. É o que mais cresce — por isso fica de fora da métrica principal.",
+    "Total com cache lido": () => "Soma das quatro secundárias (entrada + saída + cache criado + cache lido): o volume total de tokens processados, inclusive o contexto relido a cada resposta.",
+    "Ainda falta": () => "Meta escolhida − total dos dias fechados − o que já foi gasto hoje (parcial).",
+    "Hoje ainda": () => "Quanto ainda precisaria consumir hoje, além do parcial, para acompanhar o ritmo por dia do prazo escolhido.",
+    "Se for tudo hoje": () => "O que falta inteiro, caso fosse gasto num único dia, comparado com o seu maior dia já registrado.",
+    "Tendência": () => "Compara os últimos 7 dias corridos (até o último dia fechado) com os 7 anteriores: o ritmo em k/dia está subindo, caindo ou estável, e há quantas semanas seguidas isso acontece.",
+    "Sequência atual": () => "Quantos dias seguidos, até o último registro, tiveram uso — sem nenhum dia em branco no meio — e desde quando. Compara com a maior sequência já registrada.",
+    "Ciclo semanal": () => "Semana de segunda a domingo: o total da semana atual (que ainda pode estar em andamento) contra a anterior e a melhor semana já registrada. O limite semanal do seu plano pode renovar em outro dia e hora.",
+    "Faixas de consumo": () => "Quantos dias passaram de cada patamar de consumo, nos últimos 30 dias e no total. Os patamares se ajustam ao seu uso (saem dos seus próprios dias).",
+    "Distribuição": () => "Percentis dos seus dias: “50% dos dias passam de X” significa que X é a mediana. Mostra o que é um dia leve, normal ou pesado para você.",
+    "Dias leves": () => "Quantos dias ficaram abaixo de cada patamar baixo, o dia mais leve e a maior sequência de dias leves nos últimos 30 dias.",
+    "Dias pesados": () => "Quantos dias passaram do patamar de “dia pesado” (aproximadamente 1 em cada 4 dos seus dias, os mais intensos) e quantos deles foram nos últimos 30 dias.",
+    "Concentração": () => "Quanto do total veio dos 5 maiores dias. Quanto maior o percentual, mais o seu consumo se concentra em poucos dias.",
+    "Semana × fim de semana": () => "Média por dia de semana contra média por dia de fim de semana nos últimos 30 dias.",
+    "Mês": () => "Total do mês corrente até o último dia fechado, quanto o mês anterior fechou e, se o mês não acabou, uma projeção mantendo o ritmo atual.",
+    "Recordes": () => "Os três maiores dias já registrados.",
+    "Marcos": () => "Quando o acumulado cruzou cada marco (10M, 25M, 50M…), quantos dias levou entre um e outro e qual é o próximo."
+  };
+  const AJUDA_PREFIXO = [
+    ["Uso do limite de", () => "Quanto do total acumulado (todo o histórico, não só o período) já foi usado do limite escolhido em “Projeção”. “Restam” = limite − total."],
+    ["No máximo por dia", () => "O que ainda cabe no limite dividido pelos dias do prazo, contando o resto de hoje como um dia, comparado com a sua média de 30 e de 7 dias."],
+    ["Progresso até", () => "Quanto do total acumulado (todo o histórico, não só o período) já chegou à meta escolhida em “Projeção”. “Restantes” = meta − total."],
+    ["Por dia", () => "O que ainda falta dividido pelos dias do prazo, contando o resto de hoje como um dia, comparado com a sua média de 30 e de 7 dias."]
+  ];
+  const textoAjuda = chave => {
+    const f = AJUDA[chave] || (AJUDA_PREFIXO.find(p => chave.indexOf(p[0]) === 0) || [])[1];
+    return f ? f() : null;
+  };
+  const infoEl = document.getElementById("infotip") || document.createElement("div");
+  infoEl.className = "infotip"; infoEl.id = "infotip"; infoEl.setAttribute("role", "tooltip");
+  if (!infoEl.parentNode) document.body.appendChild(infoEl);
+  let infoAlvo = null, infoFixo = false;
+  function mostrarInfo(tile, fixo) {
+    const texto = textoAjuda(tile.dataset.info);
+    if (!texto) return;
+    infoEl.textContent = texto;
+    infoEl.classList.toggle("larga", texto.length > 320);
+    infoEl.classList.add("show");
+    infoAlvo = tile; infoFixo = !!fixo;
+    document.querySelectorAll(".info-btn[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
+    const btn = tile.querySelector(".info-btn");
+    btn.setAttribute("aria-expanded", "true"); btn.setAttribute("aria-describedby", "infotip");
+    const r = tile.getBoundingClientRect(), w = infoEl.offsetWidth, h = infoEl.offsetHeight;
+    const left = Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8);   // alinhado à direita do cartão, sem sair da tela
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);          // sem espaço embaixo: vai para cima
+    infoEl.style.left = left + "px"; infoEl.style.top = top + "px";
+  }
+  function esconderInfo() {
+    infoEl.classList.remove("show");
+    if (infoAlvo) { const b = infoAlvo.querySelector(".info-btn"); if (b) { b.setAttribute("aria-expanded", "false"); b.removeAttribute("aria-describedby"); } }
+    infoAlvo = null; infoFixo = false;
+  }
+  function attachInfo(tile, chave) {
+    if (!textoAjuda(chave)) return;
+    tile.dataset.info = chave;
+    tile.classList.add("has-info");
+    // Inicialização à prova de dupla execução: alguns visualizadores "fotografam" a página já montada e rodam o script de
+    // novo por cima — sem esta limpeza, cada "?" apareceria duas vezes.
+    Array.from(tile.children).filter(c => c.classList && c.classList.contains("info-btn")).forEach(c => c.remove());
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "info-btn"; b.textContent = "?";
+    b.setAttribute("aria-label", "O que é " + chave + "?"); b.setAttribute("aria-expanded", "false");
+    tile.appendChild(b);
+    tile.addEventListener("pointerenter", ev => { if (ev.pointerType === "mouse" && !infoFixo) mostrarInfo(tile, false); });
+    tile.addEventListener("pointerleave", ev => { if (ev.pointerType === "mouse" && !infoFixo) esconderInfo(); });
+    b.addEventListener("click", ev => {
+      ev.stopPropagation();
+      if (infoAlvo === tile && infoFixo) esconderInfo(); else mostrarInfo(tile, true);
+    });
+    b.addEventListener("focus", () => { if (!infoFixo) mostrarInfo(tile, false); });
+    b.addEventListener("blur", () => { if (!infoFixo) esconderInfo(); });
+  }
+  document.addEventListener("click", ev => { if (infoFixo && !ev.target.closest(".info-btn")) esconderInfo(); });
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape") esconderInfo(); });
+  window.addEventListener("scroll", esconderInfo, { passive: true });   // a posição é fixa na tela: ao rolar, ficaria no lugar errado
+
+  // ---- seções recolhíveis ----------------------------------------------------------
+  // Botão no canto de cada card; clicar no título também abre/fecha. O estado é lembrado neste navegador.
+  // ---- detalhes: por modelo, por projeto e por horário ------------------------------------------------------
+  // Os detalhes vêm de window.DETALHES (linhas [data, dimensão, chave, principal, alternativa]); respeitam o período
+  // escolhido e a contagem (principal = por linha; alternativa = por resposta). Sem esses dados, as seções somem.
+  // ---- meta diária e semanal (card no topo) -------------------------------------------------------------------
+  // Metas FIXAS, definidas pela pessoa (em k tokens, uma para cada contagem: os totais têm escalas diferentes) e salvas
+  // neste navegador. Sem nenhuma salva, o painel sugere uma a partir da média dos últimos 30 dias.
+  // "Hoje" e "semana" são os de hoje de verdade (a semana começa como escolhido no calendário), não do último registro.
+  const METAS_KEY = "meta-diaria-semanal";
+  let metasSalvas = {};
+  try { metasSalvas = JSON.parse(localStorage.getItem(METAS_KEY) || "{}") || {}; } catch (e) { /* sem armazenamento */ }
+  let metaEditando = false;
+  const niceK = x => {   // arredonda para um número "redondo" (1, 1,5, 2, 3, 5, 7,5…× potência de 10)
+    if (!(x > 0)) return 1;
+    const e = Math.pow(10, Math.floor(Math.log10(x))), m = x / e;
+    let best = 1;
+    [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10].forEach(s => { if (Math.abs(s - m) < Math.abs(best - m)) best = s; });
+    return Math.max(1, Math.round(best * e));
+  };
+  function metaAtual() {
+    const m = metasSalvas[modo] || {}, d0 = Math.max(1, niceK(windowStats(30).rate * 1.1));
+    const temD = m.d > 0, temS = m.s > 0;
+    return { d: temD ? m.d : d0, s: temS ? m.s : (temD ? m.d * 7 : d0 * 7), sugerida: !temD && !temS };
+  }
+  function consumosDeHoje() {
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const iniSem = inicioDaSemana(hoje);
+    let d = 0, s = 0;
+    RAW.forEach(r => { if (r.date.getTime() === hoje.getTime()) d += r.k; if (r.date >= iniSem && r.date <= hoje) s += r.k; });
+    return { d, s };
+  }
+  function renderMetaCard() {
+    const corpo = document.getElementById("mcCorpo");
+    if (!corpo) return;
+    const lim = objetivo === "limite", g = metaAtual(), c = consumosDeHoje();
+    const nomeD = lim ? "Limite Diário" : "Meta Diária", nomeS = lim ? "Limite Semanal" : "Meta Semanal";
+    corpo.innerHTML = "";
+    const bloco = (rot, consumoTxt, k, meta, nome) => {
+      const pct = meta > 0 ? k / meta * 100 : 0;
+      const div = document.createElement("div"); div.className = "mc-bloco" + (lim ? (pct > 100 ? " mc-estouro" : "") : (pct >= 100 ? " mc-ok" : ""));
+      const r = document.createElement("div"); r.className = "mc-rot"; r.textContent = rot;
+      const a = document.createElement("div"); a.className = "mc-consumo";
+      a.append("Consumido ", Object.assign(document.createElement("strong"), { textContent: fmtTok(k * 1000) }), " " + consumoTxt);
+      const p = document.createElement("div"); p.className = "mc-pct";
+      p.append(Object.assign(document.createElement("strong"), { textContent: Math.round(pct) + "%" }), ` ${lim ? "do" : "da"} ${nome} (${fmtTok(meta * 1000)})`);
+      const bar = document.createElement("div"); bar.className = "mc-barra";
+      const fill = document.createElement("i"); fill.style.width = Math.min(100, pct).toFixed(1) + "%"; bar.appendChild(fill);
+      const n = document.createElement("div"); n.className = "mc-nota";
+      n.textContent = lim ? (pct > 100 ? "passou do limite em " + fmtTok((k - meta) * 1000) : "restam " + fmtTok((meta - k) * 1000))
+        : (pct >= 100 ? "✓ meta batida" + (pct > 100 ? " — " + fmtTok((k - meta) * 1000) + " a mais" : "") : "faltam " + fmtTok((meta - k) * 1000));
+      div.append(r, a, p, bar, n);
+      return div;
+    };
+    const grade = document.createElement("div"); grade.className = "mc-grade";
+    grade.append(bloco("Hoje", "hoje", c.d, g.d, nomeD), bloco("Semana", "na semana", c.s, g.s, nomeS));
+    corpo.appendChild(grade);
+    const rod = document.createElement("div"); rod.className = "mc-rodape";
+    const be = document.createElement("button"); be.type = "button"; be.textContent = metaEditando ? "fechar" : "editar metas";
+    be.addEventListener("click", () => { metaEditando = !metaEditando; renderMetaCard(); });
+    rod.appendChild(be);
+    if (g.sugerida) { const s = document.createElement("span"); s.className = "mc-sug"; s.textContent = "metas sugeridas pela sua média de 30 dias"; rod.appendChild(s); }
+    else { const br = document.createElement("button"); br.type = "button"; br.textContent = "voltar à sugestão";
+      br.addEventListener("click", () => { delete metasSalvas[modo]; salvarMetas(); renderMetaCard(); }); rod.appendChild(br); }
+    corpo.appendChild(rod);
+    const ed = document.createElement("div"); ed.className = "mc-edicao"; ed.hidden = !metaEditando;
+    const campo = (rot, k, chave) => {
+      const l = document.createElement("label"); l.append(rot + " (M tokens)");
+      const i = document.createElement("input"); i.type = "number"; i.min = "0.001"; i.step = "0.1"; i.inputMode = "decimal";
+      i.value = String(Math.round(k / 1000 * 1000) / 1000);
+      i.addEventListener("change", () => {
+        const v = parseFloat(i.value);
+        if (!(v > 0)) { renderMetaCard(); return; }
+        const atual = metaAtual();
+        metasSalvas[modo] = { d: atual.d, s: atual.s }; metasSalvas[modo][chave] = v * 1000;
+        salvarMetas(); renderMetaCard();
+      });
+      l.appendChild(i); return l;
+    };
+    ed.append(campo(lim ? "Limite diário" : "Meta diária", g.d, "d"), campo(lim ? "Limite semanal" : "Meta semanal", g.s, "s"));
+    corpo.appendChild(ed);
+  }
+  function salvarMetas() { try { localStorage.setItem(METAS_KEY, JSON.stringify(metasSalvas)); } catch (e) { /* vale só nesta visita */ } }
+  const DET = Array.isArray(window.DETALHES) ? window.DETALHES : [];
+  const temDet = DET.length > 0;
+  if (!temDet) ["modelo", "projeto", "horario"].forEach(id => { const s = document.querySelector(`section[data-sec="${id}"]`); if (s) s.remove(); });
+  const detPorDia = new Map();
+  DET.forEach(r => { if (!detPorDia.has(r[0])) detPorDia.set(r[0], []); detPorDia.get(r[0]).push(r); });
+  const valDet = r => modo === "antigo" ? r[3] : r[4];
+  function detDoPeriodo(dim) {   // Map chave -> tokens no período
+    const tot = new Map();
+    filtered().forEach(row => (detPorDia.get(row.iso) || []).forEach(r => { if (r[1] === dim) tot.set(r[2], (tot.get(r[2]) || 0) + valDet(r)); }));
+    return tot;
+  }
+  const nomeModelo = raw => {   // "claude-opus-5-5" -> "Opus 5.5"; "claude-haiku-4-5-20251001" -> "Haiku 4.5"
+    if (raw === "<synthetic>") return "Interno (sintético)";
+    const m = raw.match(/^claude-([a-z]+)-(\d{1,2}(?:-\d{1,2})*)(?:-\d{8})?$/);
+    return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1) + " " + m[2].replace(/-/g, ".") : raw;
+  };
+  function desenhaBarras(host, itens) {   // itens: [{ nome, valor }] em ordem decrescente
+    host.innerHTML = "";
+    itens = itens.filter(i => i.valor > 0);   // itens zerados (ex.: modelo interno) só atrapalham
+    const total = itens.reduce((a, i) => a + i.valor, 0), max = Math.max(...itens.map(i => i.valor), 1);
+    if (!itens.length || total <= 0) { const p = document.createElement("p"); p.className = "vazio-det"; p.textContent = "Sem dados neste período."; host.appendChild(p); return; }
+    const box = document.createElement("div"); box.className = "barras";
+    itens.forEach(i => {
+      const linha = document.createElement("div"); linha.className = "barra-linha";
+      const n = document.createElement("span"); n.className = "barra-nome"; n.textContent = i.nome; n.title = i.nome;
+      const tr = document.createElement("span"); tr.className = "barra-trilho";
+      const b = document.createElement("i"); b.style.width = (i.valor / max * 100).toFixed(1) + "%"; tr.appendChild(b);
+      const v = document.createElement("span"); v.className = "barra-valor"; v.textContent = fmtTok(i.valor) + " · " + Math.round(i.valor / total * 100) + "%";
+      linha.append(n, tr, v); box.appendChild(linha);
+    });
+    host.appendChild(box);
+  }
+  let projOculto = false;
+  try { projOculto = localStorage.getItem("dash-ocultar-projetos") === "1"; } catch (e) { /* sem armazenamento */ }
+  const rotuloPeriodo = () => { const p = periodoAtual(); return p ? `${fmtDateFull(p.ini)} a ${fmtDateFull(p.fim)}` : "todo o histórico"; };
+  function renderDetalhes() {
+    if (!temDet) return;
+    const sub = `${rotuloPeriodo()} · contagem: ${TEXTOS[modo].nome}`;
+    // por modelo (modelos com o mesmo nome amigável são somados)
+    const mods = new Map();
+    detDoPeriodo("modelo").forEach((v, k) => mods.set(nomeModelo(k), (mods.get(nomeModelo(k)) || 0) + v));
+    document.getElementById("modeloSub").textContent = "tokens por modelo — " + sub;
+    desenhaBarras(document.getElementById("modeloBarras"), [...mods].map(([nome, valor]) => ({ nome, valor })).sort((a, b) => b.valor - a.valor));
+    // por projeto: os 10 maiores + "outros"; nomes podem ser ocultados (para mostrar a tela a outras pessoas)
+    const projs = [...detDoPeriodo("projeto")].map(([nome, valor]) => ({ nome, valor })).sort((a, b) => b.valor - a.valor);
+    const top = projs.slice(0, 10).map((p, i) => ({ nome: projOculto ? "Projeto " + (i + 1) : p.nome, valor: p.valor })), resto = projs.slice(10);
+    if (resto.length) top.push({ nome: `outros (${resto.length} projetos)`, valor: resto.reduce((a, p) => a + p.valor, 0) });
+    document.getElementById("projetoSub").textContent = "tokens por projeto (a pasta onde o Claude Code foi aberto) — " + sub;
+    desenhaBarras(document.getElementById("projetoBarras"), top);
+    const bo = document.getElementById("projOcultar");
+    bo.setAttribute("aria-pressed", String(projOculto)); bo.textContent = projOculto ? "Mostrar nomes dos projetos" : "Ocultar nomes dos projetos";
+    // por horário: dia da semana × hora (fuso do computador)
+    const mat = Array.from({ length: 7 }, () => Array(24).fill(0));
+    filtered().forEach(row => { const dow = row.date.getDay(); (detPorDia.get(row.iso) || []).forEach(r => { if (r[1] === "hora") mat[dow][parseInt(r[2], 10)] += valDet(r); }); });
+    const max = Math.max(...mat.map(l => Math.max(...l)), 0);
+    document.getElementById("horarioSub").textContent = "quando o consumo acontece, por dia da semana e hora — " + sub;
+    const mapa = document.getElementById("horarioMapa"); mapa.innerHTML = "";
+    const vaz = document.createElement("div"); mapa.appendChild(vaz);
+    for (let h = 0; h < 24; h++) { const c = document.createElement("div"); c.className = "hm-h"; c.textContent = h % 3 === 0 ? String(h) : ""; mapa.appendChild(c); }
+    let melhor = null;
+    for (let k = 0; k < 7; k++) {
+      const dow = (iniSemana() + k) % 7;
+      const l = document.createElement("div"); l.className = "hm-d"; l.textContent = DIAS_PT[dow]; mapa.appendChild(l);
+      for (let h = 0; h < 24; h++) {
+        const v = mat[dow][h], c = document.createElement("div"); c.className = "hm-c";
+        if (v > 0 && max > 0) {
+          const t = Math.sqrt(v / max);
+          c.classList.add("uso"); if (t >= 0.8) c.classList.add("forte");
+          c.style.setProperty("--lvl", calLevel(t) + "%");
+          const mostra = ev => showTooltip(ev.clientX, ev.clientY, [{ heading: `${DIAS_PT[dow]} · ${h}h–${h + 1}h` }, { kind: TEXTOS[modo].nome, val: fmtTok(v) }]);
+          c.addEventListener("pointerenter", mostra); c.addEventListener("pointermove", mostra); c.addEventListener("pointerleave", hideTooltip);
+          if (!melhor || v > melhor.v) melhor = { v, dow, h };
+        }
+        mapa.appendChild(c);
+      }
+    }
+    const porHora = Array(24).fill(0); mat.forEach(l => l.forEach((v, h) => { porHora[h] += v; }));
+    const hTop = porHora.indexOf(Math.max(...porHora));
+    document.getElementById("horarioResumo").textContent = melhor
+      ? `Maior consumo: ${DIAS_PT[melhor.dow]}, ${melhor.h}h–${melhor.h + 1}h (${fmtTok(melhor.v)}) · hora mais ativa no geral: ${hTop}h–${hTop + 1}h`
+      : "Sem detalhes por horário neste período.";
+  }
+  const botProj = document.getElementById("projOcultar");
+  if (botProj) botProj.addEventListener("click", () => {
+    projOculto = !projOculto;
+    try { localStorage.setItem("dash-ocultar-projetos", projOculto ? "1" : "0"); } catch (e) { /* vale só nesta visita */ }
+    renderDetalhes();
+  });
+  // ---- por aparelho e API da Anthropic (só aparecem quando há dados) ----------------------------------------
+  // window.APARELHOS = [{ nome, dias: [[data, principal, alternativa]] }] (2 ou mais computadores);
+  // window.API_DIARIO = [{ data, modelo, entrada, saida, cache_criado, cache_lido, web_search, custo_usd }] (scripts/importar-api.js).
+  const APS = Array.isArray(window.APARELHOS) && window.APARELHOS.length > 1 ? window.APARELHOS : null;
+  const APIS = Array.isArray(window.API_DIARIO) && window.API_DIARIO.length ? window.API_DIARIO : null;
+  [[APS, "aparelho"], [APIS, "api"]].forEach(([dados, id]) => { if (!dados) { const s = document.querySelector(`section[data-sec="${id}"]`); if (s) s.remove(); } });
+  const emPeriodo = iso => { const p = periodoAtual(); return !p || (iso >= isoOf(p.ini) && iso <= isoOf(p.fim)); };
+  const usd = n => "US$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function renderExtras() {
+    if (APS) {
+      const itens = APS.map(ap => ({ nome: ap.nome, valor: ap.dias.filter(d => emPeriodo(d[0])).reduce((a, d) => a + (modo === "antigo" ? d[1] : d[2]), 0) }))
+        .sort((a, b) => b.valor - a.valor);
+      document.getElementById("aparelhoSub").textContent = `tokens por computador — ${rotuloPeriodo()} · contagem: ${TEXTOS[modo].nome}`;
+      desenhaBarras(document.getElementById("aparelhoBarras"), itens);
+    }
+    if (APIS) {
+      const linhas = APIS.filter(r => emPeriodo(r.data));
+      const porModelo = new Map(), tot = { entrada: 0, saida: 0, cache_criado: 0, cache_lido: 0, custo_usd: 0 };
+      linhas.forEach(r => {
+        const nome = nomeModelo(r.modelo || "?");
+        const x = porModelo.get(nome) || { entrada: 0, saida: 0, cache_criado: 0, cache_lido: 0, custo_usd: 0 };
+        for (const k in tot) { x[k] += r[k] || 0; tot[k] += r[k] || 0; }
+        porModelo.set(nome, x);
+      });
+      document.getElementById("apiSub").textContent = `uso e custo da API da Anthropic (Console) — ${rotuloPeriodo()} · dias em UTC · NÃO entra nos totais do Claude Code acima`;
+      const tiles = document.getElementById("apiTiles"); tiles.innerHTML = "";
+      [["Custo", usd(tot.custo_usd), "em dólar, como cobrado"], ["Entrada + saída", fmtTok(tot.entrada + tot.saida), "tokens da API"],
+        ["Cache criado + lido", fmtTok(tot.cache_criado + tot.cache_lido), "tokens da API"]].forEach(([l, v, s]) => {
+        const div = document.createElement("div"); div.className = "tile";
+        const a = document.createElement("div"); a.className = "label"; a.textContent = l;
+        const b = document.createElement("div"); b.className = "value"; b.textContent = v;
+        const c = document.createElement("div"); c.className = "sub"; c.textContent = s;
+        div.append(a, b, c); tiles.appendChild(div);
+      });
+      const tb = document.getElementById("apiTabela"); tb.innerHTML = "";
+      if (!porModelo.size) { const tr = document.createElement("tr"), td = document.createElement("td"); td.colSpan = 6; td.textContent = "Sem dados da API neste período."; tr.appendChild(td); tb.appendChild(tr); }
+      [...porModelo].sort((a, b) => b[1].custo_usd - a[1].custo_usd || (b[1].entrada + b[1].saida) - (a[1].entrada + a[1].saida)).forEach(([nome, x]) => {
+        const tr = document.createElement("tr");
+        [nome, fmtTok(x.entrada), fmtTok(x.saida), fmtTok(x.cache_criado), fmtTok(x.cache_lido), usd(x.custo_usd)].forEach((t, i) => {
+          const td = document.createElement("td"); if (i) td.className = "num"; td.textContent = t; tr.appendChild(td); });
+        tb.appendChild(tr);
+      });
+    }
+  }
+  attachInfo(document.getElementById("metaCard"), "Meta diária e semanal");
+  document.querySelectorAll(".op-contagem").forEach(w => attachInfo(w, w.dataset.info));
+  // explicação da contagem: recolhida por padrão (cabeçalho enxuto); a escolha fica salva neste navegador
+  (function () {
+    const btn = document.getElementById("notaToggle"), nota = document.getElementById("contagemNota");
+    let aberta = false;
+    try { aberta = localStorage.getItem("dash-nota-contagem") === "1"; } catch (e) { /* sem armazenamento */ }
+    const pinta = () => { nota.hidden = !aberta; btn.setAttribute("aria-expanded", String(aberta)); btn.textContent = aberta ? "explicação ▴" : "explicação ▾"; };
+    btn.addEventListener("click", () => { aberta = !aberta; pinta(); try { localStorage.setItem("dash-nota-contagem", aberta ? "1" : "0"); } catch (e) { /* vale só nesta visita */ } });
+    pinta();
+  })();   // "?" ao lado de cada opção de contagem
+  const SECOES = Array.from(document.querySelectorAll("section.card[data-sec]"));
+  // estado por id da seção (true = recolhida), então mudar a ordem das seções não embaralha o que a pessoa escolheu.
+  // Sem escolha salva, só a "Geral" começa aberta.
+  let secEstado = {};
+  try { secEstado = JSON.parse(localStorage.getItem("dash-secoes") || "{}") || {}; } catch (e) { /* sem armazenamento */ }
+  const fechadoInicial = sec => sec.dataset.sec in secEstado ? !!secEstado[sec.dataset.sec] : sec.dataset.sec !== "geral";
+  function salvarSecoes() {
+    SECOES.forEach(s => { secEstado[s.dataset.sec] = s.classList.contains("collapsed"); });
+    try { localStorage.setItem("dash-secoes", JSON.stringify(secEstado)); } catch (e) { /* vale só nesta visita */ }
+  }
+  function alternarSecao(sec, fechar) {
+    const f = fechar === undefined ? !sec.classList.contains("collapsed") : fechar;
+    sec.classList.toggle("collapsed", f);
+    const b = sec.querySelector(".sec-toggle");
+    b.setAttribute("aria-expanded", String(!f));
+    b.querySelector(".sec-txt").textContent = f ? "Abrir" : "Recolher";
+    b.title = f ? "Abrir esta seção" : "Recolher esta seção";
+    if (!f) { renderCumulative(); renderCalendar(); }   // o acumulado mede a largura do contêiner e os quadradinhos rolam até o fim: refazer quando a seção reaparece
+  }
+  SECOES.forEach((sec, i) => {
+    sec.classList.add("collapsible");
+    Array.from(sec.children).filter(c => c.classList && c.classList.contains("sec-toggle")).forEach(c => c.remove());   // à prova de dupla execução
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "sec-toggle";
+    b.innerHTML = '<span class="sec-ico" aria-hidden="true">▾</span><span class="sec-txt">Recolher</span>';
+    sec.appendChild(b);
+    b.addEventListener("click", () => { alternarSecao(sec); salvarSecoes(); });
+    const h2 = sec.querySelector("h2");
+    if (h2) h2.addEventListener("click", () => { if (document.body.classList.contains("reordenando")) return; alternarSecao(sec); salvarSecoes(); });
+    alternarSecao(sec, fechadoInicial(sec));
+  });
+  document.getElementById("secRecolher").addEventListener("click", () => { SECOES.forEach(s => alternarSecao(s, true)); salvarSecoes(); });
+  document.getElementById("secAbrir").addEventListener("click", () => { SECOES.forEach(s => alternarSecao(s, false)); salvarSecoes(); });
+
+  // ---- reordenar setores ------------------------------------------------------------------------------------------
+  // Arrastar pela alça (computador) ou ▲▼ (celular e teclado). A ordem é salva por id neste navegador; "Restaurar ordem"
+  // volta à ordem original. Setores novos ou sem dados (aparelho, API) seguem a ordem normal.
+  const ORDEM_KEY = "dash-ordem-secoes";
+  const secPai = SECOES[0].parentNode;
+  const ordemPadrao = SECOES.map(s => s.dataset.sec);
+  const secoesNoDom = () => Array.from(secPai.children).filter(e => e.matches && e.matches("section.card[data-sec]"));
+  function aplicarOrdem(ids) {
+    const atuais = secoesNoDom(), ref = atuais[atuais.length - 1].nextSibling;   // o que vem logo depois do último setor
+    const novos = ids.map(id => atuais.find(s => s.dataset.sec === id)).filter(Boolean).concat(atuais.filter(s => ids.indexOf(s.dataset.sec) < 0));
+    novos.forEach(s => secPai.insertBefore(s, ref));
+    paintLimitesOrdem();
+  }
+  function salvarOrdem() { try { localStorage.setItem(ORDEM_KEY, JSON.stringify(secoesNoDom().map(s => s.dataset.sec))); } catch (e) { /* vale só nesta visita */ } }
+  function paintLimitesOrdem() {   // o primeiro não sobe e o último não desce
+    const l = secoesNoDom();
+    l.forEach((s, i) => { const [su, de] = s.querySelectorAll(".sec-ordem button"); if (su) su.disabled = i === 0; if (de) de.disabled = i === l.length - 1; });
+  }
+  function mover(sec, dir) {
+    const l = secoesNoDom(), i = l.indexOf(sec), j = i + dir;
+    if (j < 0 || j >= l.length) return;
+    secPai.insertBefore(sec, dir < 0 ? l[j] : l[j].nextSibling);
+    salvarOrdem(); paintLimitesOrdem(); sec.scrollIntoView({ block: "nearest" });
+  }
+  let ordenando = false, arrastando = null;
+  const limpaMarcas = () => secoesNoDom().forEach(s => s.classList.remove("sec-solta-antes", "sec-solta-depois"));
+  const antesDe = (ev, sec) => { const r = sec.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; };
+  SECOES.forEach(sec => {
+    Array.from(sec.children).filter(c => c.classList && c.classList.contains("sec-ordem")).forEach(c => c.remove());   // à prova de dupla execução
+    const barra = document.createElement("div"); barra.className = "sec-ordem";
+    const alca = document.createElement("span"); alca.className = "sec-alca"; alca.textContent = "⠿"; alca.setAttribute("aria-hidden", "true"); alca.title = "Arraste para reordenar";
+    const mk = (txt, rot, dir) => { const b = document.createElement("button"); b.type = "button"; b.textContent = txt; b.setAttribute("aria-label", rot); b.title = rot; b.addEventListener("click", () => mover(sec, dir)); return b; };
+    const nome = (sec.querySelector("h2") || {}).textContent || sec.dataset.sec;
+    barra.append(alca, mk("▲", "Subir o setor " + nome, -1), mk("▼", "Descer o setor " + nome, 1));
+    sec.insertBefore(barra, sec.firstChild);
+    sec.addEventListener("dragstart", ev => {
+      if (!ordenando) return;
+      arrastando = sec; sec.classList.add("sec-arrastando");
+      ev.dataTransfer.effectAllowed = "move"; try { ev.dataTransfer.setData("text/plain", sec.dataset.sec); } catch (e) { /* alguns navegadores exigem dados */ }
+    });
+    sec.addEventListener("dragend", () => { arrastando = null; sec.classList.remove("sec-arrastando"); limpaMarcas(); });
+    sec.addEventListener("dragover", ev => {
+      if (!ordenando || !arrastando || arrastando === sec) return;
+      ev.preventDefault(); limpaMarcas(); sec.classList.add(antesDe(ev, sec) ? "sec-solta-antes" : "sec-solta-depois");
+    });
+    sec.addEventListener("drop", ev => {
+      if (!ordenando || !arrastando || arrastando === sec) return;
+      ev.preventDefault(); secPai.insertBefore(arrastando, antesDe(ev, sec) ? sec : sec.nextSibling);
+      limpaMarcas(); salvarOrdem(); paintLimitesOrdem();
+    });
+  });
+  function paintOrdenar() {
+    document.body.classList.toggle("reordenando", ordenando);
+    SECOES.forEach(s => { s.draggable = ordenando; });
+    const b = document.getElementById("secOrdenar");
+    b.textContent = ordenando ? "Concluir reordenação" : "Reordenar setores"; b.setAttribute("aria-pressed", String(ordenando));
+    document.getElementById("secRestaurar").hidden = !ordenando;
+  }
+  document.getElementById("secOrdenar").addEventListener("click", () => { ordenando = !ordenando; paintOrdenar(); });
+  document.getElementById("secRestaurar").addEventListener("click", () => { aplicarOrdem(ordemPadrao); try { localStorage.removeItem(ORDEM_KEY); } catch (e) { /* sem armazenamento */ } });
+  try { const salva = JSON.parse(localStorage.getItem(ORDEM_KEY) || "null"); if (Array.isArray(salva)) aplicarOrdem(salva); } catch (e) { /* sem armazenamento */ }
+  paintLimitesOrdem();
+
+  // ---- tema claro/escuro (botão no topo) -----------------------------------
+  // Sem escolha salva, vale o tema do sistema; depois do primeiro clique vale o escolhido.
+  // Os gráficos só usam variáveis CSS, então trocar o atributo basta — nada é redesenhado.
+  const themeBtn = document.getElementById("themeToggle");
+  const sysDark = window.matchMedia("(prefers-color-scheme: dark)");
+  const rootEl = document.documentElement;
+  const isDark = () => rootEl.dataset.theme ? rootEl.dataset.theme === "dark" : sysDark.matches;
+  const paintThemeBtn = () => { themeBtn.textContent = isDark() ? "☀ Modo claro" : "☾ Modo escuro"; };
+  themeBtn.addEventListener("click", () => {
+    const next = isDark() ? "light" : "dark";
+    rootEl.setAttribute("data-theme", next);
+    try { localStorage.setItem("tema-dashboard", next); } catch (e) { /* sem armazenamento: vale só nesta visita */ }
+    paintThemeBtn();
+  });
+  sysDark.addEventListener("change", paintThemeBtn);
+  paintThemeBtn();
+
+  // controles do calendário: forma, quanto mostrar (depende da forma) e primeiro dia da semana
+  const calJanelaEl = document.getElementById("calJanela");
+  function paintCalControles() {
+    calJanelaEl.classList.toggle("desativado", !!periodoCalendario());   // acompanhando o período, a janela própria não vale
+    document.querySelectorAll(".cal-view button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.calview === calView)));
+    document.querySelectorAll(".cal-start button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.calstart === calInicio)));
+    calJanelaEl.querySelectorAll("button").forEach(b => b.remove());
+    JANELAS[calView].forEach(o => {
+      const b = document.createElement("button");
+      b.dataset.valor = String(o.v); b.textContent = o.t;
+      b.setAttribute("aria-pressed", String(o.v === calJanela[calView]));
+      calJanelaEl.appendChild(b);
+    });
+  }
+  document.querySelectorAll(".cal-view button").forEach(btn => {
+    btn.addEventListener("click", () => { calView = btn.dataset.calview; salvarCal(); paintCalControles(); hideTooltip(); renderCalendar(); });
+  });
+  document.querySelectorAll(".cal-start button").forEach(btn => {
+    btn.addEventListener("click", () => { calInicio = btn.dataset.calstart; salvarCal(); paintCalControles(); hideTooltip(); renderCalendar(); });
+  });
+  calJanelaEl.addEventListener("click", ev => {
+    const btn = ev.target.closest("button[data-valor]");
+    if (!btn) return;
+    calJanela[calView] = Number(btn.dataset.valor); salvarCal(); paintCalControles(); hideTooltip(); renderCalendar();
+  });
+  perCal.checked = calSegue;
+  paintCalControles();
+
+  // ---- botão "Contagem": principal × auxiliar ------------------------------------
+  // Troca os valores de cada dia (r.k e secundárias) e refaz tudo que depende deles.
+  function renderAll() {
+    renderKPIs(); renderInsights(); renderStreaks(); renderDaily(); renderCalendar(); renderMonthly(); renderProjection(); renderTable(); renderDetalhes(); renderMetaCard(); renderExtras();
+  }
+  function paintModoTextos() {
+    document.querySelectorAll(".mnome").forEach(n => { n.textContent = TEXTOS[modo].nome; });
+    document.getElementById("metricaDef").textContent = TEXTOS[modo].def;
+    document.getElementById("secNota").textContent = TEXTOS[modo].sec;
+    document.getElementById("contagemNota").textContent = TEXTOS[modo].nota;
+    document.querySelectorAll(".contagem button[data-contagem]").forEach(b => b.setAttribute("aria-pressed", b.dataset.contagem === modo));
+  }
+  function setModo(m) {
+    if (m === modo || (m === "antigo" && !TEM_ANTIGO)) return;
+    modo = m;
+    RAW.forEach(r => Object.assign(r, r.v[modo]));
+    chooseRateForModo();
+    try { localStorage.setItem("contagem-dashboard", modo); } catch (e) { /* vale só nesta visita */ }
+    calcMedias(); calcRuns();
+    if (partialRow) calcPartial.value = partialRow.k;   // o parcial de hoje também muda de escala
+    paintCalcNote();
+    chooseGoalForModo();
+    paintModoTextos();
+    hideTooltip();
+    renderAll();
+  }
+  document.querySelectorAll(".contagem button[data-contagem]").forEach(btn => {
+    btn.addEventListener("click", () => setModo(btn.dataset.contagem));
+  });
+  if (!TEM_ANTIGO) {
+    const b = document.querySelector('.contagem button[data-contagem="antigo"]');
+    b.disabled = true; b.title = "Faltam as colunas por linha nos dados — gere o dashboard de novo com a skill.";
+  }
+  if (partialRow) calcPartial.value = partialRow.k;     // abre já na escala da contagem lembrada
+  function paintObjetivo() {   // textos fixos da página que dependem do objetivo escolhido
+    const o = OBJ[objetivo], t = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+    t("projSub", o.projSub); t("goalRowLabel", o.Alvo); t("goalCustomLabel", o.personalizada);
+    t("acumTitulo", o.acumTitulo); t("gastarTitulo", o.gastarTitulo); t("calcFrase", o.calcFrase);
+    document.querySelector(".proj-goal").setAttribute("aria-label", o.Alvo + " de tokens");
+    document.querySelectorAll(".objetivo button[data-objetivo]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.objetivo === objetivo)));
+  }
+  document.querySelectorAll(".objetivo button[data-objetivo]").forEach(btn => btn.addEventListener("click", () => {
+    if (btn.dataset.objetivo === objetivo) return;
+    objetivo = btn.dataset.objetivo;
+    try { localStorage.setItem("objetivo-dashboard", objetivo); } catch (e) { /* vale só nesta visita */ }
+    paintObjetivo(); paintCalcNote(); hideTooltip(); renderAll();
+  }));
+  paintObjetivo();
+  paintCalcNote();
+  paintModoTextos();
+  renderAll();
+  window.addEventListener("resize", () => { renderDaily(); renderMonthly(); renderCumulative(); });
+})();
+</script>
+</body>
+</html>
