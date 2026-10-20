@@ -28,6 +28,7 @@
     --neon: #1fe035;        /* barrinha do calendário de uso */
     --neon-edge: #0a7a1a;   /* contorno que segura a barra no fundo claro */
   }
+  .viz-root.cores-custom { --neon-edge: color-mix(in srgb, var(--neon) 55%, #000); }   /* cores personalizadas: contorno escurecido (no tema escuro volta a ser a própria cor) */
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) .viz-root {
       color-scheme: dark;
@@ -70,6 +71,11 @@
     --neon: #39ff14;
     --neon-edge: #39ff14;
   }
+
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root.cores-custom { --neon-edge: var(--neon); }
+  }
+  :root[data-theme="dark"] .viz-root.cores-custom { --neon-edge: var(--neon); }
 
   * { box-sizing: border-box; }
   html, body { margin: 0; }
@@ -117,6 +123,16 @@
   .controles .filters.objetivo { margin: 0; }
   .nota-toggle { border-style: dashed !important; font-weight: 500 !important; color: var(--text-muted) !important; }
   .controles .contagem-nota { margin: 0 0 8px; max-width: 70ch; }
+  .controles .cores-painel { margin: 8px 0 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-1); gap: 8px 12px; }
+  .cores-painel[hidden] { display: none; }
+  .cores-painel .label { margin-right: 0; }
+  .cores-presets { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+  .cores-painel .cp-pt { display: inline-flex; align-items: center; gap: 3px; }
+  .cores-painel .cp-pt i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+  .cores-painel .cp-pt i:first-child { margin-left: 0; }
+  .cores-painel .cp-pt span { margin-left: 4px; }
+  .cor-campo { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
+  .cor-campo input { width: 34px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: transparent; cursor: pointer; }
 
   /* reordenar setores: no modo, todos viram uma lista recolhida com alça (arrastar) e botões ▲▼ */
   .sec-ordem { display: none; align-items: center; gap: 6px; margin: 0 0 8px; }
@@ -467,6 +483,14 @@
     <span class="label">Objetivo</span>
     <span class="op-contagem" data-info="Objetivo: atingir uma meta"><button data-objetivo="atingir" aria-pressed="true">Atingir uma meta</button></span>
     <span class="op-contagem" data-info="Objetivo: ficar dentro de um limite"><button data-objetivo="limite">Ficar dentro de um limite</button></span>
+    <button type="button" class="nota-toggle" id="coresToggle" aria-expanded="false" aria-controls="coresPainel">cores ▾</button>
+  </div>
+  <div class="filters cores-painel" id="coresPainel" role="group" aria-label="Cores" hidden>
+    <span class="label">Cores</span>
+    <span class="cores-presets" id="coresPresets"></span>
+    <label class="cor-campo">Barras <input type="color" id="corSemana" aria-label="Cor das barras (dias de semana)"></label>
+    <label class="cor-campo">Fim de semana <input type="color" id="corFds" aria-label="Cor do fim de semana"></label>
+    <label class="cor-campo">Destaque <input type="color" id="corNeon" aria-label="Cor de destaque (calendário e metas batidas)"></label>
   </div>
     </div>
   </header>
@@ -2605,6 +2629,61 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
   });
   sysDark.addEventListener("change", paintThemeBtn);
   paintThemeBtn();
+
+  // ---- cores de destaque ------------------------------------------------------------------------------------------
+  // "Original" é o padrão e não grava nada. Qualquer outra escolha vira variáveis CSS no <body> (barras, fim de semana e
+  // destaque do calendário/metas batidas), fica salva neste navegador e vale nos dois temas. Os gráficos só usam variáveis
+  // CSS, então nada é redesenhado.
+  const CORES_KEY = "dash-cores";
+  const CORES_ORIGINAL = { w: "#2a78d6", f: "#eb6834", n: "#1fe035" };
+  const CORES_PRESETS = [
+    { nome: "Oceano", w: "#0e7c86", f: "#f4a259", n: "#2de2e6" },
+    { nome: "Pôr do sol", w: "#8e44ad", f: "#ff7043", n: "#ffd54a" },
+    { nome: "Floresta", w: "#2e7d32", f: "#c77d3a", n: "#a6ff3d" },
+    { nome: "Rosa", w: "#d6336c", f: "#7048e8", n: "#ff4fa3" }
+  ];
+  const CORES_VARS = ["--series-weekday", "--series-weekend", "--neon", "--seq-450", "--seq-100"];
+  const corIn = { w: document.getElementById("corSemana"), f: document.getElementById("corFds"), n: document.getElementById("corNeon") };
+  const coresPresetsEl = document.getElementById("coresPresets");
+  const mesmaCor = (a, b) => !!a && !!b && a.w === b.w && a.f === b.f && a.n === b.n;
+  let coresAtual = null;   // null = Original
+  function aplicarCores(c) {
+    coresAtual = c;
+    CORES_VARS.forEach(v => document.body.style.removeProperty(v));
+    document.body.classList.toggle("cores-custom", !!c);
+    if (c) {
+      const s = (k, v) => document.body.style.setProperty(k, v);
+      s("--series-weekday", c.w); s("--series-weekend", c.f); s("--neon", c.n);
+      s("--seq-450", c.w); s("--seq-100", "color-mix(in srgb, " + c.w + " 22%, var(--surface-1))");
+    }
+    const v = c || CORES_ORIGINAL;
+    corIn.w.value = v.w; corIn.f.value = v.f; corIn.n.value = v.n;
+    coresPresetsEl.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(mesmaCor(c || CORES_ORIGINAL, JSON.parse(b.dataset.cores)) && (b.dataset.original === "1") === !c)));
+  }
+  function salvarCores() {
+    try { if (coresAtual) localStorage.setItem(CORES_KEY, JSON.stringify(coresAtual)); else localStorage.removeItem(CORES_KEY); } catch (e) { /* vale só nesta visita */ }
+  }
+  coresPresetsEl.textContent = "";
+  [{ nome: "Original", original: true }].concat(CORES_PRESETS).forEach(p => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "cp-pt";
+    const c = p.original ? CORES_ORIGINAL : p;
+    b.dataset.cores = JSON.stringify({ w: c.w, f: c.f, n: c.n }); b.dataset.original = p.original ? "1" : "0";
+    [c.w, c.f, c.n].forEach(cor => { const i = document.createElement("i"); i.style.background = cor; b.appendChild(i); });
+    const t = document.createElement("span"); t.textContent = p.nome; b.appendChild(t);
+    b.addEventListener("click", () => { aplicarCores(p.original ? null : { w: c.w, f: c.f, n: c.n }); salvarCores(); });
+    coresPresetsEl.appendChild(b);
+  });
+  ["w", "f", "n"].forEach(k => corIn[k].addEventListener("input", () => { aplicarCores({ w: corIn.w.value, f: corIn.f.value, n: corIn.n.value }); salvarCores(); }));
+  const coresBtn = document.getElementById("coresToggle"), coresPainel = document.getElementById("coresPainel");
+  coresBtn.addEventListener("click", () => {
+    coresPainel.hidden = !coresPainel.hidden;
+    coresBtn.setAttribute("aria-expanded", String(!coresPainel.hidden));
+    coresBtn.textContent = coresPainel.hidden ? "cores ▾" : "cores ▴";
+  });
+  let coresSalvas = null;
+  try { const j = JSON.parse(localStorage.getItem(CORES_KEY) || "null"); if (j && /^#[0-9a-f]{6}$/i.test(j.w) && /^#[0-9a-f]{6}$/i.test(j.f) && /^#[0-9a-f]{6}$/i.test(j.n)) coresSalvas = { w: j.w, f: j.f, n: j.n }; } catch (e) { /* sem armazenamento ou valor inválido: fica o Original */ }
+  aplicarCores(coresSalvas);
 
   // controles do calendário: forma, quanto mostrar (depende da forma) e primeiro dia da semana
   const calJanelaEl = document.getElementById("calJanela");

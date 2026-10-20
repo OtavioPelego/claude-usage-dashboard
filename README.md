@@ -101,6 +101,10 @@ a meta?" vs "Quanto ainda posso gastar?", "Meta Diária" vs "Limite Diário"). N
 **Card no topo:** meta diária e semanal fixas, centralizado logo abaixo do título (a explicação da contagem fica recolhida); e um seletor de
 **objetivo** (atingir uma meta ou ficar dentro de um limite) que só muda as frases.
 
+**Colors:** a "cores ▾" button opens presets (Original, Oceano, Pôr do sol, Floresta, Rosa) and three free pickers — bars,
+weekend, highlight. "Original" is the default; your choice is saved in the browser and works in light and dark. /
+**Cores:** o botão "cores ▾" abre presets e três seletores livres (barras, fim de semana, destaque); "Original" é o padrão.
+
 Collapsible sections, in this order (each has a Collapse/Open button; only **Geral** starts open and your choice is
 remembered): **Geral** (headline numbers), **Insights**, **Calendário de uso** (calendar or week-squares view, choose how
 many weeks/months to show, week starting on Monday or Sunday), **Consumo por dia ativo**, **Total por mês**,

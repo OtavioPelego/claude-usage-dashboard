@@ -70,6 +70,9 @@ arquivos existir, mande o HTML para a pessoa.
   "atingir uma meta" (para se desafiar, por exemplo) ou "ficar dentro de um limite" (para economizar) — a conta é a mesma,
   mas as frases mudam ("Quanto por dia até a meta?" × "Quanto ainda posso gastar?", "Meta Diária" × "Limite Diário").
   Nenhum dos dois é "o certo": a pessoa escolhe o que a ajuda.
+- **Cores:** o botão "cores ▾" (ao lado de Objetivo) abre presets (Original, Oceano, Pôr do sol, Floresta, Rosa) e três
+  seletores livres — barras, fim de semana e destaque (calendário e metas batidas). "Original" é o padrão; a escolha fica
+  salva no navegador e vale nos temas claro e escuro.
 - **A página:** setores recolhíveis (só o "Geral" abre sozinho; a escolha de cada pessoa fica lembrada), um "?" em cada
   métrica explicando o que ela é, e um filtro de **período** (atalhos de 7 a 180 dias, "últimos N dias" e um intervalo de
   datas do passado) que vale para o Geral, o gráfico por dia, o total por mês, os detalhes e — se a pessoa deixar marcado
