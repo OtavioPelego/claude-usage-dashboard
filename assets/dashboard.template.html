@@ -400,8 +400,8 @@
   .infotip { white-space: pre-line; }   /* os textos longos (como cada contagem é construída) têm parágrafos */
   .infotip.larga { max-width: min(380px, calc(100vw - 16px)); }
   .op-contagem { display: inline-flex; align-items: center; gap: 4px; position: relative; }
-  .op-contagem .info-btn { position: static; flex: none; }
-  .op-contagem .info-btn::after { inset: -6px; }
+  .op-contagem .info-btn { position: relative; top: auto; right: auto; flex: none; }   /* relative: a área de toque (::after) fica em volta do "?", não do botão da opção; top/right herdados deslocariam o botão */
+  .op-contagem .info-btn::after { inset: -2px; }
   .insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   @media (max-width: 900px) { .insights { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 560px) { .insights { grid-template-columns: 1fr; } }
@@ -2289,7 +2289,7 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
     if (infoAlvo) { const b = infoAlvo.querySelector(".info-btn"); if (b) { b.setAttribute("aria-expanded", "false"); b.removeAttribute("aria-describedby"); } }
     infoAlvo = null; infoFixo = false;
   }
-  function attachInfo(tile, chave) {
+  function attachInfo(tile, chave, soBotao) {   // soBotao: o balão só abre pelo "?" (opções de contagem/objetivo e card de meta)
     if (!textoAjuda(chave)) return;
     tile.dataset.info = chave;
     tile.classList.add("has-info");
@@ -2300,8 +2300,9 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
     b.type = "button"; b.className = "info-btn"; b.textContent = "?";
     b.setAttribute("aria-label", "O que é " + chave + "?"); b.setAttribute("aria-expanded", "false");
     tile.appendChild(b);
-    tile.addEventListener("pointerenter", ev => { if (ev.pointerType === "mouse" && !infoFixo) mostrarInfo(tile, false); });
-    tile.addEventListener("pointerleave", ev => { if (ev.pointerType === "mouse" && !infoFixo) esconderInfo(); });
+    const alvoMouse = soBotao ? b : tile;
+    alvoMouse.addEventListener("pointerenter", ev => { if (ev.pointerType === "mouse" && !infoFixo) mostrarInfo(tile, false); });
+    alvoMouse.addEventListener("pointerleave", ev => { if (ev.pointerType === "mouse" && !infoFixo) esconderInfo(); });
     b.addEventListener("click", ev => {
       ev.stopPropagation();
       if (infoAlvo === tile && infoFixo) esconderInfo(); else mostrarInfo(tile, true);
@@ -2533,8 +2534,8 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
       });
     }
   }
-  attachInfo(document.getElementById("metaCard"), "Meta diária e semanal");
-  document.querySelectorAll(".op-contagem").forEach(w => attachInfo(w, w.dataset.info));
+  attachInfo(document.getElementById("metaCard"), "Meta diária e semanal", true);
+  document.querySelectorAll(".op-contagem").forEach(w => attachInfo(w, w.dataset.info, true));
   // explicação da contagem: recolhida por padrão (cabeçalho enxuto); a escolha fica salva neste navegador
   (function () {
     const btn = document.getElementById("notaToggle"), nota = document.getElementById("contagemNota");
