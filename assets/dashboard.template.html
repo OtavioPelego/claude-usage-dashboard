@@ -2057,7 +2057,7 @@
       const ptr = ev.type.startsWith("pointer");
       showTooltip(ptr ? ev.clientX : rect.left + rect.width / 2, ptr ? ev.clientY : rect.top, [
         { heading: fmtDateFull(date) + " · " + DIAS_PT[date.getDay()] },
-        { kind: "sem cache lido", val: fmtK(r.k) + " k" },
+        { kind: TEXTOS[modo].nome, val: fmtK(r.k) + " k" },
         { kind: r.parcial ? "dia em aberto" : "do maior dia", val: r.parcial ? "parcial" : Math.round(r.k / maxK * 100) + "%" },
         { kind: "saída", val: fmtTok(r.saida) },
         { kind: "sessões", val: String(r.sessoes) }
