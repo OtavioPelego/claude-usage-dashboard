@@ -22,10 +22,9 @@
 // Dados da API da Anthropic (opcional): rode scripts/importar-api.js; o arquivo dados/api-diario.csv aparece numa seção
 // separada, sem entrar nos totais do Claude Code.
 //
-// Duas contagens por dia (as duas ficam no CSV; o dashboard alterna entre elas):
-//   Contagem Claude Code (principal): cada linha do transcript conta. Uma resposta do Claude aparece em várias linhas
-//                               (uma por bloco de conteúdo) e todas entram; métrica = entrada + saída.
-//   Contagem Alternativa:       cada resposta conta uma vez; "sem cache lido" = entrada + saída + cache criado.
+// Contagem do dashboard: a "Contagem Claude Code" — cada linha do transcript conta. Uma resposta do Claude aparece em várias
+// linhas (uma por bloco de conteúdo) e todas entram; métrica = entrada + saída. O CSV também guarda, por dia, as colunas por
+// resposta (sem_cache_lido, entrada, saida, cache_*), que o dashboard já não mostra como contagem.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -229,14 +228,12 @@ if (!fs.existsSync(raizTranscripts)) {
   const fmtT = n => n >= 1e6 ? (n / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' M' : Math.round(n / 1e3).toLocaleString('pt-BR') + ' k';
   const principalDe = r => (r.linha_entrada || 0) + (r.linha_saida || 0);
   const somaPrincipal = registros.reduce((a, r) => a + principalDe(r), 0);
-  const somaAux = registros.reduce((a, r) => a + r.sem_cache_lido, 0);
   console.log(`\n  Transcripts: ${nArq} arquivo(s) em ${raizTranscripts}`);
   console.log(`  Leitura: ${nLidos} arquivo(s) nesta rodada, ${desde === '0000-00-00' ? 'histórico completo' : 'só desde ' + desde + ' (os últimos 3 dias; os anteriores vêm do CSV)'}`);
   console.log(`  Este aparelho: "${aparelho}" · aparelhos juntos no dashboard: ${aparelhos.length}${aparelhos.length > 1 ? ' (' + aparelhos.map(a => a.nome).join(', ') + ')' : ''}`);
   console.log(`  Dias no histórico: ${registros.length}  (${registros[0].data} a ${registros[registros.length - 1].data})`);
   console.log(`  Total — Contagem Claude Code (entrada + saída por linha, ESTIMATIVA do painel): ${fmtT(somaPrincipal)} tokens`);
-  console.log(`  Total — Contagem Alternativa (sem cache lido: entrada + saída + cache criado):  ${fmtT(somaAux)} tokens`);
-  for (const r of registros.slice(-3)) console.log(`    ${r.data}  Claude Code ${fmtT(principalDe(r)).padStart(9)}   Alternativa ${fmtT(r.sem_cache_lido).padStart(9)}${r.parcial ? '  (dia em aberto)' : ''}`);
+  for (const r of registros.slice(-3)) console.log(`    ${r.data}  Claude Code ${fmtT(principalDe(r)).padStart(9)}${r.parcial ? '  (dia em aberto)' : ''}`);
   if (!registros.some(r => r.data === hoje)) console.log(`    (hoje, ${hoje}, não aparece: ainda não houve uso do Claude Code hoje neste computador — é normal)`);
   const nMod = new Set(detMesc.filter(r => r.dim === 'modelo').map(r => r.chave)).size, nProj = new Set(detMesc.filter(r => r.dim === 'projeto').map(r => r.chave)).size;
   console.log(`  Detalhes: ${nMod} modelo(s), ${nProj} projeto(s), por hora do dia${api ? ' · API: ' + api.length + ' linha(s) em dados/api-diario.csv' : ''}`);

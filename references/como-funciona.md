@@ -35,7 +35,7 @@
 | `atualizado_em` | quando a linha foi calculada |
 | `linha_entrada`, `linha_saida`, `linha_cache_criado`, `linha_cache_lido` | os mesmos componentes **contando cada linha do transcript** (contagem principal = `linha_entrada + linha_saida`) |
 
-## Por que existem duas contagens
+## Por que a contagem é por linha
 
 Uma resposta do Claude aparece em várias linhas do transcript (uma por bloco de conteúdo: texto, chamada de ferramenta…),
 todas com o mesmo `message.id` + `requestId`. Duas formas de somar:
@@ -46,9 +46,10 @@ todas com o mesmo `message.id` + `requestId`. Duas formas de somar:
   mão, em horários variados, e o painel chegou a reescrever dias já fechados — então parte da dispersão vem dali. É uma
   hipótese forte, **não** uma cópia garantida. Fechar o dia em UTC reproduz pior (correlação 0,77 contra 0,90): o painel
   vira o dia na meia-noite local.
-- **Por resposta (auxiliar, "sem cache lido"):** cada resposta uma vez, incluindo o cache criado. Dá o volume real de
-  contexto processado e é cerca de 3 vezes maior. O **cache lido** (contexto relido a cada resposta) é guardado só como
-  secundária: somado, ele infla o total em ordens de grandeza.
+- **Por resposta ("sem cache lido"):** cada resposta uma vez, incluindo o cache criado. **Não aparece mais no dashboard**
+  (só existe a contagem por linha), mas o script continua gravando essas colunas no CSV — o histórico fica completo e dá
+  para usar em outras análises. O **cache lido** (contexto relido a cada resposta) aparece só como quadro secundário:
+  somado, ele infla o total em ordens de grandeza.
 
 ## Problemas conhecidos
 

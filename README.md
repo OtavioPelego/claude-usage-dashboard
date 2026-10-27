@@ -120,15 +120,13 @@ the default pace are computed from *your own* data.
 "calendário acompanha o período" (the calendar follows the chosen period, or keeps its own window if unchecked). The
 period drives the headline numbers, the daily chart, the monthly totals and the model/project/hour/computer/API sections.
 
-## Two ways of counting / Duas contagens
+## How it counts / Como conta
 
-There is a switch at the top of the page:
-
-- **Contagem Claude Code** (default) — input + output of *every line* of the transcript, no cache. The reconstruction that best matched the
-  Claude Code usage panel in the author's test (89 days, one machine: total within ~2% of the panel, i.e. 0.98×;
-  individual days can differ more). **An estimate, not a guaranteed copy.**
-- **Contagem Alternativa** — "sem cache lido": input + output + cache creation, each response counted once. Shows the volume of
-  context processed; much larger.
+One count, the **Contagem Claude Code** — input + output of *every line* of the transcript, no cache. It is the
+reconstruction that best matched the Claude Code usage panel in the author's test (89 days, one machine: total within ~2%
+of the panel, i.e. 0.98×; individual days can differ more). **An estimate, not a guaranteed copy.** Cache creation and cache
+reads show up only as secondary tiles in the *Geral* section. / Uma só contagem, a **Contagem Claude Code**: entrada + saída
+de cada linha do transcript, sem cache. Estimativa, não cópia garantida; cache criado e cache lido são só quadros secundários.
 
 Details in [`references/como-funciona.md`](references/como-funciona.md).
 

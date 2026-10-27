@@ -402,6 +402,7 @@
   .op-contagem { display: inline-flex; align-items: center; gap: 4px; position: relative; }
   .op-contagem .info-btn { position: relative; top: auto; right: auto; flex: none; }   /* relative: a área de toque (::after) fica em volta do "?", não do botão da opção; top/right herdados deslocariam o botão */
   .op-contagem .info-btn::after { inset: -2px; }
+  .contagem-fixa { font-size: 13px; font-weight: 550; background: var(--text-primary); color: var(--surface-1); border: 1px solid var(--text-primary); border-radius: 7px; padding: 6px 12px; }
   .insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   @media (max-width: 900px) { .insights { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 560px) { .insights { grid-template-columns: 1fr; } }
@@ -481,8 +482,7 @@
     <div class="controles">
   <div class="filters contagem" role="group" aria-label="Contagem">
     <span class="label">Contagem</span>
-    <span class="op-contagem" data-info="Contagem Claude Code"><button data-contagem="antigo" aria-pressed="true">Contagem Claude Code</button></span>
-    <span class="op-contagem" data-info="Contagem Alternativa"><button data-contagem="atual">Contagem Alternativa</button></span>
+    <span class="op-contagem" data-info="Contagem Claude Code"><span class="contagem-fixa">Contagem Claude Code</span></span>
     <button type="button" class="nota-toggle" id="notaToggle" aria-expanded="false" aria-controls="contagemNota">explicação ▾</button>
   </div>
   <div class="section-sub contagem-nota" id="contagemNota" hidden></div>
@@ -744,9 +744,8 @@
     <strong>Contagem Claude Code (a padrão):</strong> entrada + saída de cada linha do transcript, sem cache (cada resposta do Claude
     aparece em várias linhas, e todas contam). É uma reconstrução da contagem do painel de uso do Claude Code: num teste
     de 89 dias de um único usuário o total ficou a cerca de 2% do painel (0,98×); dia a dia os valores podem variar mais
-    — trate como estimativa, não como cópia garantida. <strong>Contagem Alternativa:</strong> “sem cache lido” =
-    entrada + saída + cache criado, cada resposta uma vez; o cache lido (a conversa relida a cada resposta) fica só como
-    secundária. O Claude Code apaga transcripts antigos depois de um tempo, então o histórico começa no que ainda existia na
+    — trate como estimativa, não como cópia garantida. Cache criado e cache lido (a conversa relida a cada
+    resposta) aparecem só como secundárias. O Claude Code apaga transcripts antigos depois de um tempo, então o histórico começa no que ainda existia na
     primeira vez que o script rodou; rodar de novo de vez em quando mantém os dias já registrados.
     <details class="sobre">
       <summary>Fascínio por dados — por que esta skill existe</summary>
@@ -811,11 +810,11 @@
     atual: {
       nome: "sem cache lido", def: "(entrada + saída + cache criado, cada resposta contada uma vez)",
       sec: "secundárias no mesmo período — as três primeiras somam a métrica principal; o cache lido fica de fora dela",
-      nota: "Contagem Alternativa: cada resposta conta uma vez e o cache criado entra na conta — mostra o volume de contexto processado, bem maior que a outra contagem."
+      nota: "Contagem por resposta (reserva): faltam as colunas por linha nos dados, então cada resposta conta uma vez e o cache criado entra na conta."
     }
   };
   let modo = TEM_ANTIGO ? "antigo" : "atual";
-  try { const m = localStorage.getItem("contagem-dashboard"); if (m === "atual" || (m === "antigo" && TEM_ANTIGO)) modo = m; } catch (e) { /* sem armazenamento: começa na principal */ }
+  // (a escolha de contagem não existe mais: vale sempre a Contagem Claude Code; "atual" só serve de reserva quando faltam as colunas por linha)
   RAW.forEach(r => Object.assign(r, r.v[modo]));
 
   // ---- objetivo: o painel pode ser lido como "atingir uma meta" ou "ficar dentro de um limite" ----------------
@@ -2226,9 +2225,7 @@ As frases passam a falar em limite, uso do limite e “quanto ainda posso gastar
 Como é feita: para cada dia, soma a ENTRADA + a SAÍDA de cada linha dos transcripts — os arquivos .jsonl que o Claude Code guarda no seu computador. Uma mesma resposta do Claude aparece em várias linhas (uma por bloco: texto, chamada de ferramenta…) e TODAS contam: por isso “com repetições”. O cache (criado e lido) fica de fora. O dia é o do fuso do seu computador.
 
 É uma ESTIMATIVA: num teste com 89 dias de uso de um único usuário, o total ficou a cerca de 2% do painel (0,98×). Dia a dia os valores podem variar mais — o total ao longo do tempo é a parte mais confiável.`,
-    "Contagem Alternativa": () => `Outra forma de enxergar o volume: o que o Claude processou, sem as repetições de linha.
-
-Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do Claude UMA vez só — sem repetir as linhas da mesma resposta, e por isso sem repetições de criação de cache. O cache LIDO (o contexto relido a cada resposta) fica de fora: somado, ele inflaria o total em ordens de grandeza. Aparece nos dados como “sem cache lido” e dá cerca de 3 vezes o valor da Contagem Claude Code.`,
+    // (a Contagem Alternativa saiu: só existe a Contagem Claude Code)
     "Total no período": () => `Soma de ${TEXTOS[modo].nome} nos dias do período escolhido, incluindo o dia em aberto (se houver). Em k tokens: 1.000 k = 1 milhão de tokens.`,
     "Dias ativos": () => "Quantos dias tiveram algum uso do Claude Code neste computador no período. Dias sem uso não aparecem nos registros.",
     "Média por dia fechado": () => "Total dos dias fechados ÷ número de dias fechados com uso (dias sem uso não entram na conta). O dia em aberto fica de fora porque ainda não terminou. Mediana = o valor do meio: metade dos dias ficou abaixo dela.",
@@ -2758,7 +2755,8 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
     document.getElementById("metricaDef").textContent = TEXTOS[modo].def;
     document.getElementById("secNota").textContent = TEXTOS[modo].sec;
     document.getElementById("contagemNota").textContent = TEXTOS[modo].nota;
-    document.querySelectorAll(".contagem button[data-contagem]").forEach(b => b.setAttribute("aria-pressed", b.dataset.contagem === modo));
+    const fx = document.querySelector(".contagem-fixa");   // só existe a Contagem Claude Code; se faltarem as colunas por linha, o rótulo avisa
+    if (fx) fx.textContent = modo === "antigo" ? "Contagem Claude Code" : "Contagem por resposta (faltam as colunas por linha nos dados)";
   }
   function setModo(m) {
     if (m === modo || (m === "antigo" && !TEM_ANTIGO)) return;
@@ -2774,12 +2772,9 @@ Como é feita: soma ENTRADA + SAÍDA + CACHE CRIADO, contando cada resposta do C
     hideTooltip();
     renderAll();
   }
-  document.querySelectorAll(".contagem button[data-contagem]").forEach(btn => {
-    btn.addEventListener("click", () => setModo(btn.dataset.contagem));
-  });
-  if (!TEM_ANTIGO) {
-    const b = document.querySelector('.contagem button[data-contagem="antigo"]');
-    b.disabled = true; b.title = "Faltam as colunas por linha nos dados — gere o dashboard de novo com a skill.";
+  if (!TEM_ANTIGO) {   // dados sem as colunas por linha: o painel cai na contagem por resposta e avisa no rótulo
+    const fx = document.querySelector(".contagem-fixa");
+    if (fx) fx.title = "Faltam as colunas por linha nos dados — gere o dashboard de novo com a skill (rode com --full).";
   }
   if (partialRow) calcPartial.value = partialRow.k;     // abre já na escala da contagem lembrada
   function paintObjetivo() {   // textos fixos da página que dependem do objetivo escolhido

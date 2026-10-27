@@ -57,13 +57,12 @@ arquivos existir, mande o HTML para a pessoa.
 
 ## O que explicar à pessoa (curto, em linguagem simples)
 
-- **Duas contagens, com botão para alternar no topo da página.** A **"Contagem Claude Code"** (a padrão,
-  que abre sozinha) soma entrada + saída de *cada linha* do transcript, sem cache — é a reconstrução que melhor
-  reproduziu o painel de uso do próprio Claude Code (num teste de 89 dias de um único usuário, o total ficou a cerca
-  de 2% do painel, 0,98×; dia a dia os valores podem variar mais). Diga que é **estimativa**, não cópia garantida — e,
-  se a pessoa perguntar, que o total ao longo do tempo é a parte mais confiável, mais que cada dia isolado. A
-  **"Contagem Alternativa"** ("sem cache lido") soma entrada + saída + cache criado, cada resposta uma vez — mostra o
-  volume de contexto processado e é bem maior.
+- **Uma só contagem: a "Contagem Claude Code".** Ela soma entrada + saída de *cada linha* do transcript, sem cache — é
+  a reconstrução que melhor reproduziu o painel de uso do próprio Claude Code (num teste de 89 dias de um único usuário,
+  o total ficou a cerca de 2% do painel, 0,98×; dia a dia os valores podem variar mais). Diga que é **estimativa**, não
+  cópia garantida — e, se a pessoa perguntar, que o total ao longo do tempo é a parte mais confiável, mais que cada dia
+  isolado. O cache criado e o cache lido aparecem só como quadros secundários na seção Geral (o cache lido é o contexto
+  relido a cada resposta e não entra na métrica).
 - **No topo:** um card com **Meta Diária, Semanal e Mensal** (consumido hoje / na semana / no mês e o % de cada meta), centralizado
   logo abaixo do título (a explicação da contagem fica recolhida em "explicação ▾"). As metas são **fixas e da própria pessoa** (botão "editar metas", salvas no navegador, uma para cada
   contagem); sem metas salvas, o painel sugere pela média dos últimos 30 dias. Há também a escolha de **Objetivo**:

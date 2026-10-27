@@ -7,7 +7,7 @@ Este arquivo diz o que já está pronto, o que ainda não dá e como a pessoa (o
 
 | Fonte / visão | Estado | Onde |
 |---|---|---|
-| Claude Code deste computador (duas contagens) | **Pronto** | `scripts/build-dashboard.js` |
+| Claude Code deste computador (contagem por linha) | **Pronto** | `scripts/build-dashboard.js` |
 | **Por modelo, por projeto, por horário** | **Pronto** | `scripts/lib/transcripts.js` + seções do dashboard |
 | **Vários computadores** | **Pronto** | um CSV por computador em `dados/aparelhos/`; o build soma por dia (`--aparelho`) |
 | **API da Anthropic (Console)** | **Pronto**, como seção separada | `scripts/importar-api.js` (organização com chave de administração, ou CSV do Console) |
